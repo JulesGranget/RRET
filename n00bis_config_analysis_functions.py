@@ -1,5 +1,7 @@
 
 
+
+
 import os
 import numpy as np
 import matplotlib
@@ -162,6 +164,7 @@ def surface_laplacian(raw, leg_order, m, smoothing):
 
 
 
+
 ########################################
 ######## GENERATE FOLDERS ########
 ########################################
@@ -209,183 +212,287 @@ def generate_folder_structure(sujet):
 
 
 
-    
-
-
-################################################
-######## DATA MANAGEMENT CLUSTER ########
-################################################
-
-
-def sync_folders__push_to_mnt():
-
-    #### need to be exectuted outside of cluster to work
-    folder_to_push_to = {path_data : os.path.join(path_mntdata, 'Data'), path_precompute : os.path.join(path_mntdata, 'Analyses', 'precompute'), 
-                         path_prep : os.path.join(path_mntdata, 'Analyses', 'preprocessing'), path_main_workdir : os.path.join(path_mntdata, 'Scripts'),
-                         path_slurm : os.path.join(path_mntdata, 'Scripts_slurm'), 
-                         os.path.join(path_results, 'RESPI', 'respfeatures') : os.path.join(path_mntdata, 'Analyses', 'results', 'RESPI', 'respfeatures')}
-            
-    #### We push from A to B
-    for folder_local, folder_remote in folder_to_push_to.items():
-
-        subprocess.run([f"rsync -avz --delete -v {folder_local}/ {folder_remote}/"], shell=True)
-
-
-
-
-
-def sync_folders__push_to_crnldata():
-
-    #### dont push scripts from mnt to crnldata
-    folder_to_push_to = {path_data : os.path.join(path_mntdata, 'Data'), path_precompute : os.path.join(path_mntdata, 'Analyses', 'precompute'), 
-                         path_prep : os.path.join(path_mntdata, 'Analyses', 'preprocessing'), path_slurm : os.path.join(path_mntdata, 'Scripts_slurm')}
-            
-    #### We push from A to B
-    for folder_local, folder_remote in folder_to_push_to.items():
-
-        subprocess.run([f"rsync -avz --delete -v {folder_remote}/ {folder_local}/"], shell=True)
-
-    
-
-
-
-
-
 
 ################################
-######## SLURM EXECUTE ########
+######## CHANLIST ########
 ################################
 
-#params_one_script = [sujet]
-def write_script_slurm(name_script, name_function, params_one_script, n_core, mem):
-        
-    python = sys.executable
-
-    #### params to print in script
-    params_str = ""
-    for i, params_i in enumerate(params_one_script):
-        if isinstance(params_i, str):
-            str_i = f"'{params_i}'"
-        else:
-            str_i = str(params_i)
-
-        if i == 0 :
-            params_str = params_str + str_i
-        else:
-            params_str = params_str + ' , ' + str_i
-
-    #### params to print in script name
-    params_str_name = ''
-    for i, params_i in enumerate(params_one_script):
-
-        str_i = str(params_i)
-
-        if i == 0 :
-            params_str_name = params_str_name + str_i
-        else:
-            params_str_name = params_str_name + '_' + str_i
-
-    #### remove all txt that block name save
-    for txt_remove_i in ["'", "[", "]", "{", "}", ":", " ", ","]:
-        if txt_remove_i == " " or txt_remove_i == ",":
-            params_str_name = params_str_name.replace(txt_remove_i, '_')
-        else:
-            params_str_name = params_str_name.replace(txt_remove_i, '')
     
-    #### script text
-    lines = [f'#! {python}']
-    lines += ['import sys']
-    lines += [f"sys.path.append('{os.path.join(path_mntdata, 'Scripts')}')"]
-    lines += [f'from {name_script} import {name_function}']
-    lines += [f'{name_function}({params_str})']
-        
-    #### write script and execute
-    os.chdir(path_slurm)
-    slurm_script_name =  f"run__{name_function}__{params_str_name}.py" #add params
-        
-    with open(slurm_script_name, 'w') as f:
-        f.writelines('\n'.join(lines))
-        os.fchmod(f.fileno(), mode = stat.S_IRWXU)
-        f.close()
+
+def get_chanlist(sujet):
+
+    path_source = os.getcwd()
     
-    #### script text
-    lines = ['#!/bin/bash']
-    lines += [f'#SBATCH --job-name={name_function}']
-    lines += [f'#SBATCH --output=%slurm_{name_function}_{params_str_name}.log']
-    lines += [f'#SBATCH --cpus-per-task={n_core}']
-    lines += [f'#SBATCH --mem={mem}']
-    lines += [f"srun {python} {os.path.join(path_mntdata, 'Scripts_slurm', slurm_script_name)}"]
-        
-    #### write script and execute
-    slurm_bash_script_name =  f"bash__{name_function}__{params_str_name}.sh" #add params
-        
-    with open(slurm_bash_script_name, 'w') as f:
-        f.writelines('\n'.join(lines))
-        os.fchmod(f.fileno(), mode = stat.S_IRWXU)
-        f.close()
+    os.chdir(os.path.join(path_precompute, 'chanlist'))
+    
+    chan_list = np.load(f"{sujet}_chanlist.npy")
+    loca_list = np.load(f"{sujet}_localist.npy")
 
-    return slurm_bash_script_name
+    #### go back to path source
+    os.chdir(path_source)
+
+    return chan_list, loca_list
 
 
+def modify_loca_name(loca_list):
 
-def execute_script_slurm(slurm_bash_script_name):
+    loca_list_corrected = []
 
-    #### execute bash
-    print(f'#### slurm submission : {slurm_bash_script_name}')
-    os.chdir(os.path.join(path_mntdata, 'Scripts_slurm'))
-    subprocess.run([f'sbatch {slurm_bash_script_name}'], shell=True) 
+    for _loca in loca_list:
 
+        #### type
 
+        if _loca[:3] == 'ctx' or _loca[:3] == 'Ctx':
+            _type = 'gm'
+            _loca_crop_type = _loca[4:]
+        elif _loca[:6] == 'Unknown':
+            _type = 'unknown'
+            _loca_crop_type = _loca
+        elif _loca[:13] == 'Left-Cerebral':
+            _type = 'wm'
+            _loca_crop_type = _loca[5:]
+        elif _loca == 'Left-Inf-Lat-Vent':
+            _type = 'CSF'
+            _loca_crop_type = _loca[5:]
+        elif _loca == 'Left-Lateral-Ventricle':
+            _type = 'CSF'
+            _loca_crop_type = _loca[5:]
+        elif _loca[:4] == 'Left':
+            _type = 'gm'
+            _loca_crop_type = _loca[5:]
+        elif _loca[:14] == 'Right-Cerebral':
+            _type = 'wm'
+            _loca_crop_type = _loca[6:]
+        elif _loca == 'Right-Inf-Lat-Vent':
+            _type = 'CSF'
+            _loca_crop_type = _loca[6:]
+        elif _loca == 'Right-Lateral-Ventricle':
+            _type = 'CSF'
+            _loca_crop_type = _loca[6:]
+        elif _loca[:5] == 'Right':
+            _type = 'gm'
+            _loca_crop_type = _loca[6:]
+        elif _loca == 'Brain-Stem':
+            _type = 'gm'
+            _loca_crop_type = _loca
+        elif _loca == '3rd-Ventricle':
+            _type = 'CSF'
+            _loca_crop_type = _loca
+        else:
+            _type = 'not_classified'
+            _loca_crop_type = _loca
 
-#name_script, name_function, params = 'n07_precompute_FC', 'get_MI_sujet_stretch', [[sujet] for sujet in sujet_list_FC]
-def execute_function_in_slurm_bash(name_script, name_function, params, n_core=15, mem='15G'):
+        # print(f"loca:{_loca} / type:{_type} / cropped:{_loca_crop_type}")
 
-    script_path = os.getcwd()
+        #### side
 
-    #### write process
-    if any(isinstance(i, list) for i in params):
+        if _type == 'gm':
+            if _loca_crop_type[:2] == 'lh':
+                _side = 'l'
+                _loca_crop_type_side = _loca_crop_type[3:]
+            elif _loca_crop_type[:2] == 'rh':
+                _side = 'r'
+                _loca_crop_type_side = _loca_crop_type[3:]
+            elif _loca[:4] == 'Left':
+                _side = 'l'
+                _loca_crop_type_side = _loca_crop_type
+            elif _loca[:5] == 'Right':
+                _side = 'r'
+                _loca_crop_type_side = _loca_crop_type
+            elif _loca_crop_type == 'Brain-Stem':
+                _side = 'Brain-Stem'
+                _loca_crop_type_side = _loca_crop_type
+            elif _loca_crop_type == 'Inf-lat-vent':
+                _side = 'CSF'
+                _loca_crop_type_side = _loca_crop_type
+            else:
+                _side = 'not_classified'
 
-        slurm_bash_script_name_list = []
-
-        for one_param_set in params:
+            if _loca_crop_type_side not in  ['Brain-Stem', 'Inf-Lat-Vent', 'insula-ant', 'insula-pos', 'Accumbens-area']:
+                _loca_crop_type_side = _loca_crop_type_side.split('-')[0]
             
-            _slurm_bash_script_name = write_script_slurm(name_script, name_function, one_param_set, n_core, mem)
-            slurm_bash_script_name_list.append(_slurm_bash_script_name)
+            # print(f"loca:{_loca} / type:{_type} / side:{_side} / cropped:{_loca_crop_type_side}")
 
-    else:
+        elif _type == 'wm':
 
-        slurm_bash_script_name = write_script_slurm(name_script, name_function, params, n_core, mem)
+            if _loca[:4] == 'Left':
+                _side = 'l'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca[:2] == 'lh':
+                _side = 'l'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca[:5] == 'Right':
+                _side = 'r'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca[:2] == 'rh':
+                _side = 'r'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca_crop_type in ['Inf-Lat-Vent']:
+                _side = 'right'
+                _loca_crop_type_side = 'White-Matter'
+            else:
+                _side = 'not_classified'
+                _loca_crop_type_side = 'White-Matter'
 
-    #### synchro
-    sync_folders__push_to_mnt()
+            # print(f"loca:{_loca} / type:{_type} / side:{_side}")
 
-    #### exec
-    if any(isinstance(i, list) for i in params):
+        elif _loca[:6] == 'Unknown':
+            _side = 'unknown'
+            _loca_crop_type_side = _loca_crop_type
 
-        for _slurm_bash_script_name in slurm_bash_script_name_list:
-            execute_script_slurm(_slurm_bash_script_name)
+        else:
+            _side = 'not_classified'
+            _loca_crop_type_side = _loca_crop_type
+
+        loca_list_corrected.append(_loca_crop_type_side)
+
+    loca_list_corrected = np.array(loca_list_corrected)
+
+    return loca_list_corrected
+
+
+
+def get_df_loca(sujet):
+
+    path_source = os.getcwd()
+    
+    os.chdir(os.path.join(path_precompute, 'chanlist'))
+    
+    chan_list = np.load(f"{sujet}_chanlist.npy")
+    loca_list = np.load(f"{sujet}_localist.npy")
+
+    df_loca = pd.DataFrame()
+
+    for _loca in loca_list:
+
+        #### type
+
+        if _loca[:3] == 'ctx' or _loca[:3] == 'Ctx':
+            _type = 'gm'
+            _loca_crop_type = _loca[4:]
+        elif _loca[:6] == 'Unknown':
+            _type = 'unknown'
+            _loca_crop_type = _loca
+        elif _loca[:13] == 'Left-Cerebral':
+            _type = 'wm'
+            _loca_crop_type = _loca[5:]
+        elif _loca == 'Left-Inf-Lat-Vent':
+            _type = 'CSF'
+            _loca_crop_type = _loca[5:]
+        elif _loca == 'Left-Lateral-Ventricle':
+            _type = 'CSF'
+            _loca_crop_type = _loca[5:]
+        elif _loca[:4] == 'Left':
+            _type = 'gm'
+            _loca_crop_type = _loca[5:]
+        elif _loca[:14] == 'Right-Cerebral':
+            _type = 'wm'
+            _loca_crop_type = _loca[6:]
+        elif _loca == 'Right-Inf-Lat-Vent':
+            _type = 'CSF'
+            _loca_crop_type = _loca[6:]
+        elif _loca == 'Right-Lateral-Ventricle':
+            _type = 'CSF'
+            _loca_crop_type = _loca[6:]
+        elif _loca[:5] == 'Right':
+            _type = 'gm'
+            _loca_crop_type = _loca[6:]
+        elif _loca == 'Brain-Stem':
+            _type = 'gm'
+            _loca_crop_type = _loca
+        elif _loca == '3rd-Ventricle':
+            _type = 'CSF'
+            _loca_crop_type = _loca
+        else:
+            _type = 'not_classified'
+            _loca_crop_type = _loca
+
+        # print(f"loca:{_loca} / type:{_type} / cropped:{_loca_crop_type}")
+
+        #### side
+
+        if _type == 'gm':
+            if _loca_crop_type[:2] == 'lh':
+                _side = 'l'
+                _loca_crop_type_side = _loca_crop_type[3:]
+            elif _loca_crop_type[:2] == 'rh':
+                _side = 'r'
+                _loca_crop_type_side = _loca_crop_type[3:]
+            elif _loca[:4] == 'Left':
+                _side = 'l'
+                _loca_crop_type_side = _loca_crop_type
+            elif _loca[:5] == 'Right':
+                _side = 'r'
+                _loca_crop_type_side = _loca_crop_type
+            elif _loca_crop_type == 'Brain-Stem':
+                _side = 'Brain-Stem'
+                _loca_crop_type_side = _loca_crop_type
+            elif _loca_crop_type == 'Inf-lat-vent':
+                _side = 'CSF'
+                _loca_crop_type_side = _loca_crop_type
+            else:
+                _side = 'not_classified'
+
+            if _loca_crop_type_side not in  ['Brain-Stem', 'Inf-Lat-Vent', 'insula-ant', 'insula-pos', 'Accumbens-area']:
+                _loca_crop_type_side = _loca_crop_type_side.split('-')[0]
             
-    else:
+            # print(f"loca:{_loca} / type:{_type} / side:{_side} / cropped:{_loca_crop_type_side}")
 
-        execute_script_slurm(slurm_bash_script_name)
+        elif _type == 'wm':
 
-    #### get back to original path
-    os.chdir(script_path)
+            if _loca[:4] == 'Left':
+                _side = 'l'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca[:2] == 'lh':
+                _side = 'l'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca[:5] == 'Right':
+                _side = 'r'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca[:2] == 'rh':
+                _side = 'r'
+                _loca_crop_type_side = 'White-Matter'
+            elif _loca_crop_type in ['Inf-Lat-Vent']:
+                _side = 'right'
+                _loca_crop_type_side = 'White-Matter'
+            else:
+                _side = 'not_classified'
+                _loca_crop_type_side = 'White-Matter'
+
+            # print(f"loca:{_loca} / type:{_type} / side:{_side}")
+
+        elif _loca[:6] == 'Unknown':
+            _side = 'unknown'
+            _loca_crop_type_side = _loca_crop_type
+
+        else:
+            _side = 'not_classified'
+            _loca_crop_type_side = _loca_crop_type
+
+        # print(f"loca:{_loca} / type:{_type} / side:{_side} / cropped:{_loca_crop_type_side}")
+
+    #### go back to path source
+    os.chdir(path_source)
+
+    return chan_list, loca_list
 
 
+def get_coords(sujet):
+    
+    chanlist, localist = get_chanlist(sujet)
 
+    os.chdir(os.path.join(path_data, 'anatomy'))
+    lepto_coord = pd.read_csv(f"{sujet}.LEPTO")
+    lepto_coord = np.array([np.array(_coord.astype('str')[0].split(' ')).astype('float') for _coord in lepto_coord.iloc[1:lepto_coord.shape[0]].values])
+    
+    raw_name = pd.read_csv(f"{sujet}.electrodeNames")
+    raw_chan_name = np.array([_name[0].split(' ')[0] for _name in raw_name.index.values])[1:]
+    raw_selection = np.array([np.where(raw_chan_name == _chan)[0][0] for _chan in chanlist])
+    lepto_coord_ordered = lepto_coord[raw_selection]
 
+    df_coords = pd.DataFrame({'chan' : chanlist, 'loca' : localist, 'coords_x' : lepto_coord_ordered[:,0], 'coords_y' : lepto_coord_ordered[:,1], 'coords_z' : lepto_coord_ordered[:,2]})
 
-
-
-
-
-
-
-
-
-
-
+    return df_coords
 
 
 
