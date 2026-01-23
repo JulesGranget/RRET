@@ -54,7 +54,7 @@ if PC_ID == 'jules-ubuntu1':
 
     path_main_workdir = '/home/jules/Documents/RRET_JULES/Scripts'
     path_general = '/home/jules/Documents/RRET_JULES'
-    n_core = 25
+    n_core = 23
 
     
 path_data = os.path.join(path_general, 'Data')

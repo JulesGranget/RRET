@@ -234,117 +234,99 @@ def get_chanlist(sujet):
     return chan_list, loca_list
 
 
+
+
 def modify_loca_name(loca_list):
+
+    # loca_list = np.concatenate([get_chanlist(sujet)[1] for sujet in sujet_list])
+
+    # np.unique([_loca[:3] for _loca in loca_list])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Ctx'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'ctx'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == '3rd'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Bra'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Lef'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Rig'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'par'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'inf'])
+
+    # np.unique([_loca[7:] for _loca in loca_list if _loca[:3] == 'Ctx'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'ctx'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == '3rd'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Bra'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Lef'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'Rig'])
+    # np.unique([_loca for _loca in loca_list if _loca[:3] == 'par'])
 
     loca_list_corrected = []
 
     for _loca in loca_list:
 
-        #### type
+        if _loca[:3] == '3rd':
+            _type = 'csf'
+            _loca_corr = _loca
+            _side = 'csf'
 
-        if _loca[:3] == 'ctx' or _loca[:3] == 'Ctx':
+        elif _loca[:3] == 'Bra':
             _type = 'gm'
-            _loca_crop_type = _loca[4:]
-        elif _loca[:6] == 'Unknown':
-            _type = 'unknown'
-            _loca_crop_type = _loca
-        elif _loca[:13] == 'Left-Cerebral':
-            _type = 'wm'
-            _loca_crop_type = _loca[5:]
-        elif _loca == 'Left-Inf-Lat-Vent':
-            _type = 'CSF'
-            _loca_crop_type = _loca[5:]
-        elif _loca == 'Left-Lateral-Ventricle':
-            _type = 'CSF'
-            _loca_crop_type = _loca[5:]
-        elif _loca[:4] == 'Left':
+            _loca_corr = _loca
+            _side = _loca
+
+        elif _loca[:3] == 'ctx' or _loca[:3] == 'Ctx':
             _type = 'gm'
-            _loca_crop_type = _loca[5:]
-        elif _loca[:14] == 'Right-Cerebral':
-            _type = 'wm'
-            _loca_crop_type = _loca[6:]
-        elif _loca == 'Right-Inf-Lat-Vent':
-            _type = 'CSF'
-            _loca_crop_type = _loca[6:]
-        elif _loca == 'Right-Lateral-Ventricle':
-            _type = 'CSF'
-            _loca_crop_type = _loca[6:]
-        elif _loca[:5] == 'Right':
-            _type = 'gm'
-            _loca_crop_type = _loca[6:]
-        elif _loca == 'Brain-Stem':
-            _type = 'gm'
-            _loca_crop_type = _loca
-        elif _loca == '3rd-Ventricle':
-            _type = 'CSF'
-            _loca_crop_type = _loca
-        else:
-            _type = 'not_classified'
-            _loca_crop_type = _loca
-
-        # print(f"loca:{_loca} / type:{_type} / cropped:{_loca_crop_type}")
-
-        #### side
-
-        if _type == 'gm':
-            if _loca_crop_type[:2] == 'lh':
-                _side = 'l'
-                _loca_crop_type_side = _loca_crop_type[3:]
-            elif _loca_crop_type[:2] == 'rh':
-                _side = 'r'
-                _loca_crop_type_side = _loca_crop_type[3:]
-            elif _loca[:4] == 'Left':
-                _side = 'l'
-                _loca_crop_type_side = _loca_crop_type
-            elif _loca[:5] == 'Right':
-                _side = 'r'
-                _loca_crop_type_side = _loca_crop_type
-            elif _loca_crop_type == 'Brain-Stem':
-                _side = 'Brain-Stem'
-                _loca_crop_type_side = _loca_crop_type
-            elif _loca_crop_type == 'Inf-lat-vent':
-                _side = 'CSF'
-                _loca_crop_type_side = _loca_crop_type
-            else:
-                _side = 'not_classified'
-
-            if _loca_crop_type_side not in  ['Brain-Stem', 'Inf-Lat-Vent', 'insula-ant', 'insula-pos', 'Accumbens-area']:
-                _loca_crop_type_side = _loca_crop_type_side.split('-')[0]
-            
-            # print(f"loca:{_loca} / type:{_type} / side:{_side} / cropped:{_loca_crop_type_side}")
-
-        elif _type == 'wm':
-
-            if _loca[:4] == 'Left':
-                _side = 'l'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca[:2] == 'lh':
-                _side = 'l'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca[:5] == 'Right':
-                _side = 'r'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca[:2] == 'rh':
-                _side = 'r'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca_crop_type in ['Inf-Lat-Vent']:
+            if _loca[4:6] == 'lh':
+                _side = 'left'
+            elif _loca[4:6] == 'rh':
                 _side = 'right'
-                _loca_crop_type_side = 'White-Matter'
+            
+            if _loca[7:].split('-')[-1] in ['ant', 'pos']:
+                _loca_corr = _loca[7:]
             else:
-                _side = 'not_classified'
-                _loca_crop_type_side = 'White-Matter'
+                _loca_corr = _loca[7:].split('-')[0]
 
-            # print(f"loca:{_loca} / type:{_type} / side:{_side}")
+        elif _loca[:3] == 'Lef':
+            _side = 'left'
+            if _loca[5:].find('Cerebral-White-Matter') != -1:
+                _type = 'wm'
+                _loca_corr = 'WM'
+            elif _loca[5:].find('Inf-Lat-Vent') != -1:
+                _type = 'csf'
+                _loca_corr = 'Inf-Lat-Vent'
+            else:
+                if _loca[5:].split('-')[-1] in ['ant', 'pos']:
+                    _type = 'gm'
+                    _loca_corr = _loca[5:]
+                else:
+                    _type = 'gm'
+                    _loca_corr = _loca[5:].split('-')[0]
 
-        elif _loca[:6] == 'Unknown':
+        elif _loca[:3] == 'Rig':
+            _side = 'right'
+            if _loca[6:].find('Cerebral-White-Matter') != -1:
+                _type = 'wm'
+                _loca_corr = 'WM'
+            elif _loca[6:].find('Inf-Lat-Vent') != -1:
+                _type = 'csf'
+                _loca_corr = 'Inf-Lat-Vent'
+            else:
+                if _loca[6:].split('-')[-1] in ['ant', 'pos']:
+                    _type = 'gm'
+                    _loca_corr = _loca[6:]
+                else:
+                    _type = 'gm'
+                    _loca_corr = _loca[6:].split('-')[0]
+            
+        elif _loca[:3] == 'Unk':
+            _type = 'unknown'
+            _loca_corr = 'unknown'
             _side = 'unknown'
-            _loca_crop_type_side = _loca_crop_type
 
         else:
-            _side = 'not_classified'
-            _loca_crop_type_side = _loca_crop_type
+            _type = f'UNSORTED_{_loca}'
+            _loca_corr = f'UNSORTED_{_loca}'
+            _side = f'UNSORTED_{_loca}'
 
-        loca_list_corrected.append(_loca_crop_type_side)
+        loca_list_corrected.append([_loca_corr, _type, _side])
 
     loca_list_corrected = np.array(loca_list_corrected)
 
@@ -352,134 +334,11 @@ def modify_loca_name(loca_list):
 
 
 
-def get_df_loca(sujet):
-
-    path_source = os.getcwd()
-    
-    os.chdir(os.path.join(path_precompute, 'chanlist'))
-    
-    chan_list = np.load(f"{sujet}_chanlist.npy")
-    loca_list = np.load(f"{sujet}_localist.npy")
-
-    df_loca = pd.DataFrame()
-
-    for _loca in loca_list:
-
-        #### type
-
-        if _loca[:3] == 'ctx' or _loca[:3] == 'Ctx':
-            _type = 'gm'
-            _loca_crop_type = _loca[4:]
-        elif _loca[:6] == 'Unknown':
-            _type = 'unknown'
-            _loca_crop_type = _loca
-        elif _loca[:13] == 'Left-Cerebral':
-            _type = 'wm'
-            _loca_crop_type = _loca[5:]
-        elif _loca == 'Left-Inf-Lat-Vent':
-            _type = 'CSF'
-            _loca_crop_type = _loca[5:]
-        elif _loca == 'Left-Lateral-Ventricle':
-            _type = 'CSF'
-            _loca_crop_type = _loca[5:]
-        elif _loca[:4] == 'Left':
-            _type = 'gm'
-            _loca_crop_type = _loca[5:]
-        elif _loca[:14] == 'Right-Cerebral':
-            _type = 'wm'
-            _loca_crop_type = _loca[6:]
-        elif _loca == 'Right-Inf-Lat-Vent':
-            _type = 'CSF'
-            _loca_crop_type = _loca[6:]
-        elif _loca == 'Right-Lateral-Ventricle':
-            _type = 'CSF'
-            _loca_crop_type = _loca[6:]
-        elif _loca[:5] == 'Right':
-            _type = 'gm'
-            _loca_crop_type = _loca[6:]
-        elif _loca == 'Brain-Stem':
-            _type = 'gm'
-            _loca_crop_type = _loca
-        elif _loca == '3rd-Ventricle':
-            _type = 'CSF'
-            _loca_crop_type = _loca
-        else:
-            _type = 'not_classified'
-            _loca_crop_type = _loca
-
-        # print(f"loca:{_loca} / type:{_type} / cropped:{_loca_crop_type}")
-
-        #### side
-
-        if _type == 'gm':
-            if _loca_crop_type[:2] == 'lh':
-                _side = 'l'
-                _loca_crop_type_side = _loca_crop_type[3:]
-            elif _loca_crop_type[:2] == 'rh':
-                _side = 'r'
-                _loca_crop_type_side = _loca_crop_type[3:]
-            elif _loca[:4] == 'Left':
-                _side = 'l'
-                _loca_crop_type_side = _loca_crop_type
-            elif _loca[:5] == 'Right':
-                _side = 'r'
-                _loca_crop_type_side = _loca_crop_type
-            elif _loca_crop_type == 'Brain-Stem':
-                _side = 'Brain-Stem'
-                _loca_crop_type_side = _loca_crop_type
-            elif _loca_crop_type == 'Inf-lat-vent':
-                _side = 'CSF'
-                _loca_crop_type_side = _loca_crop_type
-            else:
-                _side = 'not_classified'
-
-            if _loca_crop_type_side not in  ['Brain-Stem', 'Inf-Lat-Vent', 'insula-ant', 'insula-pos', 'Accumbens-area']:
-                _loca_crop_type_side = _loca_crop_type_side.split('-')[0]
-            
-            # print(f"loca:{_loca} / type:{_type} / side:{_side} / cropped:{_loca_crop_type_side}")
-
-        elif _type == 'wm':
-
-            if _loca[:4] == 'Left':
-                _side = 'l'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca[:2] == 'lh':
-                _side = 'l'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca[:5] == 'Right':
-                _side = 'r'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca[:2] == 'rh':
-                _side = 'r'
-                _loca_crop_type_side = 'White-Matter'
-            elif _loca_crop_type in ['Inf-Lat-Vent']:
-                _side = 'right'
-                _loca_crop_type_side = 'White-Matter'
-            else:
-                _side = 'not_classified'
-                _loca_crop_type_side = 'White-Matter'
-
-            # print(f"loca:{_loca} / type:{_type} / side:{_side}")
-
-        elif _loca[:6] == 'Unknown':
-            _side = 'unknown'
-            _loca_crop_type_side = _loca_crop_type
-
-        else:
-            _side = 'not_classified'
-            _loca_crop_type_side = _loca_crop_type
-
-        # print(f"loca:{_loca} / type:{_type} / side:{_side} / cropped:{_loca_crop_type_side}")
-
-    #### go back to path source
-    os.chdir(path_source)
-
-    return chan_list, loca_list
-
 
 def get_coords(sujet):
     
     chanlist, localist = get_chanlist(sujet)
+    localist = modify_loca_name(localist)
 
     os.chdir(os.path.join(path_data, 'anatomy'))
     lepto_coord = pd.read_csv(f"{sujet}.LEPTO")
@@ -487,12 +346,59 @@ def get_coords(sujet):
     
     raw_name = pd.read_csv(f"{sujet}.electrodeNames")
     raw_chan_name = np.array([_name[0].split(' ')[0] for _name in raw_name.index.values])[1:]
-    raw_selection = np.array([np.where(raw_chan_name == _chan)[0][0] for _chan in chanlist])
-    lepto_coord_ordered = lepto_coord[raw_selection]
 
-    df_coords = pd.DataFrame({'chan' : chanlist, 'loca' : localist, 'coords_x' : lepto_coord_ordered[:,0], 'coords_y' : lepto_coord_ordered[:,1], 'coords_z' : lepto_coord_ordered[:,2]})
+    coords_to_add = []
+    in_chanlist_presence_vec = []
+    for _chan in chanlist:
+        if _chan in raw_chan_name:
+            _chan_i_in_raw = np.where(raw_chan_name == _chan)[0][0]
+            coords_to_add.append(lepto_coord[_chan_i_in_raw])
+            in_chanlist_presence_vec.append(True)
+        else:
+            coords_to_add.append(np.array([0, 0, 0]))
+            in_chanlist_presence_vec.append(False)
+    
+    coords_to_add = np.array(coords_to_add)
+    in_chanlist_presence_vec = np.array(in_chanlist_presence_vec)
+        
+    df_coords = pd.DataFrame({'chan' : chanlist, 'loca' : localist[:,0], 'coords_x' : coords_to_add[:,0], 'coords_y' : coords_to_add[:,1], 'coords_z' : coords_to_add[:,2], 'coords_info_present' : in_chanlist_presence_vec})
 
     return df_coords
+
+
+
+
+
+def get_df_loca_allsujet():
+
+    path_source = os.getcwd()
+    
+    os.chdir(os.path.join(path_precompute, 'chanlist'))
+    
+    df_loca_allsujet = []
+
+    for sujet in sujet_list:
+
+        _df_coords_sujet = get_coords(sujet)
+        _df_coords_sujet = pd.concat([pd.DataFrame({'sujet' : [sujet]*_df_coords_sujet.shape[0]}), _df_coords_sujet], axis=1)
+        df_loca_allsujet.append(_df_coords_sujet)
+
+    df_loca_allsujet = pd.concat(df_loca_allsujet)
+
+    #### go back to path source
+    os.chdir(path_source)
+
+    return df_loca_allsujet
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -11,19 +11,17 @@ from n01_manip_data import *
 
 
 
-
-
 ################################
 ######## PRECOMPUTE TF ########
 ################################
 
-#sujet, norm_param = sujet_list[0], 'rscore'
+#sujet, norm_param = sujet_list[6], 'rscore'
 def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
     #### verify if already computed
     os.chdir(os.path.join(path_precompute, 'TF', 'session'))
 
-    if os.path.exists(f'{sujet}_df_Pxx.xlsx'):
+    if os.path.exists(f'{sujet}_xr_Pxx.nc'):
         print(f'{sujet} ALREADY COMPUTED', flush=True)
         return
 
@@ -49,9 +47,22 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     inspi_starts = []
     _len_resp = 0
 
+    nan_epochs = []
+
     for epoch_i in range(resp.shape[0]):
 
         print_advancement(epoch_i, resp.shape[0], [25,50,75])
+
+        if np.isnan(data[:,epoch_i]).sum() != 0 or np.isnan(resp[epoch_i]).sum() != 0:
+            nan_epochs.append(epoch_i)
+            continue
+
+        if debug:
+            plt.plot(resp[epoch_i])
+            plt.show()
+
+            plt.pcolormesh(data[:,epoch_i])
+            plt.show()
 
         if epoch_i == 0:
 
@@ -120,10 +131,20 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     data_linear = np.concatenate(data_linear, axis=1)
     inspi_starts = np.array(inspi_starts)
 
+    if len(nan_epochs) != 0:
+        df_resp_cycle = df_resp_cycle.drop(index=nan_epochs)
+
+    if np.isnan(resp_linear).sum() != 0 or np.isnan(data_linear).sum() != 0:
+        raise ValueError('NAN IN DATA')
+
     if debug:
 
         plt.plot(resp_linear)
         plt.vlines(inspi_starts, ymin=resp_linear.min(), ymax=resp_linear.max(), color='r')
+        plt.show()
+
+        np.where(np.isnan(data_linear[0]))
+        plt.plot(data_linear[0])
         plt.show()
     
     #### select wavelet parameters
@@ -148,12 +169,12 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(extract_chan_conv)(chan_i) for chan_i, _ in enumerate(chanlist))
 
     #### extract and norm
-    print(f'NORM params', flush=True)
-
-    os.chdir(path_memmap)
-    rscore_param = np.memmap(f'memmap_{sujet}_rscore_param.npy', mode="w+", shape=(2, len(chanlist), nfrex), dtype=np.float32)
+    print(f'NORM PARAMS', flush=True)
 
     if norm_param == 'rscore':
+
+        os.chdir(path_memmap)
+        rscore_param = np.memmap(f'memmap_{sujet}_rscore_param.npy', mode="w+", shape=(2, len(chanlist), nfrex), dtype=np.float32)
 
         # for chan_i, chan in enumerate(chanlist):
         def extract_chan_rscore_params(chan_i): 
@@ -188,49 +209,43 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
         os.chdir(path_memmap)
         tf_allconv_norm = np.memmap(f'memmap_{sujet}_tf_conv_norm.npy', mode="w+", shape=(len(chanlist), nfrex, data_linear.shape[-1]), dtype=np.float32)
 
-        # for chan_i, _ in enumerate(chanlist):
         def norm_chan_conv(chan_i):
 
-            print_advancement(chan_i, data.shape[0], steps=[25, 50, 75])
+            print_advancement(chan_i, len(chanlist), steps=[25, 50, 75])
 
-            _mat = tf_allconv[chan_i]
-            _mat_norm = np.zeros(_mat.shape)
+            mat = tf_allconv[chan_i]
 
-            if debug:
+            mad = rscore_param[0, chan_i, :]
+            med = rscore_param[1, chan_i, :]
 
-                plt.pcolormesh(_mat)
-                plt.colorbar()
-                plt.show()
-
-                plt.plot(np.median(_mat[:10], axis=0))
-                plt.show()
-
-            for fi in range(nfrex):
-
-                _mad, _med = rscore_param[0,chan_i,fi], rscore_param[1,chan_i,fi]
-
-                _x = _mat[fi]
-                _mat_norm[fi] = (_x-_med) * 0.6745 / _mad
+            mat_norm = (mat - med[:, None]) * 0.6745 / mad[:, None]
 
             if debug:
 
-                plt.pcolormesh(_mat_norm)
+                time_plot = 120*srate
+
+                plt.pcolormesh(mat[:,:time_plot])
                 plt.colorbar()
                 plt.show()
 
-                _mat_norm.min()
-                _mat_norm.max()
-
-                plt.hist(_mat_norm.reshape(-1))
+                plt.plot(np.median(mat[:10], axis=0))
                 plt.show()
-            
-            tf_allconv_norm[chan_i] = _mat_norm
 
-        joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(norm_chan_conv)(chan_i) for chan_i, _ in enumerate(chanlist))
+                vmin, vmax = np.percentile(mat_norm[:,:time_plot].reshape(-1), 1), np.percentile(mat_norm[:,:time_plot].reshape(-1), 99)
+                plt.pcolormesh(mat_norm[:,:time_plot], vmin=vmin, vmax=vmax)
+                plt.colorbar()
+                plt.show()
+
+                plt.hist(mat_norm.ravel(), bins=200)
+                plt.show()
+
+            tf_allconv_norm[chan_i] = mat_norm.astype(np.float32, copy=False)
+
+        joblib.Parallel(n_jobs=n_core, prefer="threads")(joblib.delayed(norm_chan_conv)(chan_i) for chan_i in range(len(chanlist)))
 
     if norm_param == None:
 
-        print(f'NORM', flush=True)
+        print(f'NO NORM', flush=True)
 
         tf_allconv_norm[:] = tf_allconv
 
@@ -260,20 +275,44 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
         # if _inspi_i == 14:
         #     raise
 
+        _dummy_cycles = np.array([[np.abs(respi_cycle_search_time[0]*srate), np.abs(respi_cycle_search_time[0]*srate) + 0.5*srate, np.abs(respi_cycle_search_time[0]*srate) + 1*srate]])
+
         _resp = np.array(resp_linear[_inspi_val+respi_cycle_search_time[0]*srate:_inspi_val+respi_cycle_search_time[1]*srate], copy=True)
         _resp_clean = physio.preprocess(_resp, srate, band=25., btype='lowpass', ftype='bessel', order=5, normalize=False)
         _resp_clean_smooth = physio.smooth_signal(_resp_clean, srate, win_shape='gaussian', sigma_ms=40.0)
+
+        if debug:
+            plt.plot(_resp_clean_smooth)
+            plt.show()
         
-        _cycles = physio.detect_respiration_cycles(_resp_clean_smooth, srate, baseline_mode='median')
+        try:
+            _cycles = physio.detect_respiration_cycles(_resp_clean_smooth, srate, baseline_mode='median')
+        except:
+            _cycles = _dummy_cycles
+
+        if debug:
+
+            fig_verif, ax = plt.subplots(figsize=(18, 10))
+            ax.plot(_resp)
+            ax.scatter(_cycles[:,0], _resp[_cycles[:,0]], color='g', label='inspi_selected')
+            ax.scatter(_cycles[:,-1], _resp[_cycles[:,-1]], color='g', label='inspi_selected')
+            ax.scatter(_cycles[:,1], _resp[_cycles[:,1]], color='c', label='expi_selected', marker='s')
+            plt.vlines([np.abs(respi_cycle_search_time[0]*srate), inspi_starts[_inspi_i+1]-_inspi_val+np.abs(respi_cycle_search_time[0]*srate)], ymin=_resp.min(), ymax=_resp.max(), color='r')
+            ax.title('RAW')
+            plt.legend()
+            fig_verif.show()   
 
         if _cycles.shape[0] > 1:
-            _inspi_sel_clean = _cycles[:,0] > np.abs(respi_cycle_search_time[0]*srate)-50
+            _inspi_sel_clean = _cycles[:,1] > np.abs(respi_cycle_search_time[0]*srate)
             if _inspi_sel_clean.sum() != 0:
                 _cycle_clean = _cycles[_inspi_sel_clean]
             else:
                 raise
         else:
-            _cycle_clean = _cycles
+            if _cycles[:,1] > np.abs(respi_cycle_search_time[0]*srate):
+                _cycle_clean = _cycles
+            else:
+                _cycle_clean = _dummy_cycles
 
         _expi = _inspi_val+respi_cycle_search_time[0]*srate + _cycle_clean[0,1]
 
@@ -385,20 +424,37 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     resp_features_cleaned = resp_features[extract_good_all]
 
     cond_sel_dict = {}
-    cond_sel_dict_post = {}
+    cond_sel_dict_pre = {}
 
-    for cond in conditions:
-        if cond == 'rsp_ctrl':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-        elif cond == 'rsp_chl':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-        elif cond == 'oc_ctrl':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-        elif cond == 'oc_chl':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
+    try:
 
-        cond_sel_dict[cond] = np.where(_cond_sel)[0]
-        cond_sel_dict_post[cond] = cond_sel_dict[cond] -1
+        for cond in conditions:
+            if cond == 'rsp_ctrl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
+            elif cond == 'rsp_chl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
+            elif cond == 'oc_ctrl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
+            elif cond == 'oc_chl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
+
+            cond_sel_dict[cond] = np.where(_cond_sel)[0]
+            cond_sel_dict_pre[cond] = cond_sel_dict[cond] -1
+
+    except:
+
+        for cond in conditions:
+            if cond == 'rsp_ctrl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values
+            elif cond == 'rsp_chl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values
+            elif cond == 'oc_ctrl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values
+            elif cond == 'oc_chl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values 
+
+            cond_sel_dict[cond] = np.where(_cond_sel)[0]
+            cond_sel_dict_pre[cond] = cond_sel_dict[cond] -1
 
     if debug:
 
@@ -420,61 +476,90 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     print(f'SAVE TF STRETCH', flush=True)
     os.chdir(os.path.join(path_precompute, 'TF', 'session'))
     for cond in conditions:
-        np.save(f'{sujet}_{cond}_tf_allchan_stretch_pre.npy', tf_allchan_stretch_cleaned[:,cond_sel_dict[cond]])    
-        np.save(f'{sujet}_{cond}_tf_allchan_stretch_post.npy', tf_allchan_stretch_cleaned[:,cond_sel_dict_post[cond]])    
+        np.save(f'{sujet}_{cond}_tf_allchan_stretch_post.npy', tf_allchan_stretch_cleaned[:,cond_sel_dict[cond]])    
+        np.save(f'{sujet}_{cond}_tf_allchan_stretch_pre.npy', tf_allchan_stretch_cleaned[:,cond_sel_dict_pre[cond]])    
 
     os.chdir(os.path.join(path_precompute, 'RESP', 'session')) 
     for cond in conditions:
-        np.save(f'{sujet}_{cond}_pre_stretch_resp.npy', resp_stretch_cleaned[cond_sel_dict[cond]])
-        np.save(f'{sujet}_{cond}_pre_stretch_post.npy', resp_stretch_cleaned[cond_sel_dict_post[cond]])
-        
+        np.save(f'{sujet}_{cond}_stretch_resp_post.npy', resp_stretch_cleaned[cond_sel_dict[cond]])
+        np.save(f'{sujet}_{cond}_stretch_resp_pre.npy', resp_stretch_cleaned[cond_sel_dict_pre[cond]])
+
+    os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
     resp_features_cleaned.to_excel(f'{sujet}_respfeatures_cleaned.xlsx')
+    df_resp_cycle_cleaned.to_excel(f"{sujet}_cycles_info_cleaned.xlsx")
 
     #### extract power
     print("EXTRACT POWER", flush=True)
-
-    rows = []
 
     idx = np.arange(stretch_point_TF)
     inspi_sel = idx <= stretch_point_TF / 2
     expi_sel  = idx >  stretch_point_TF / 2
 
-    band_frex_sel = {band: (frex >= freq[0]) & (frex <= freq[-1]) for band, freq in freq_band_dict.items()}
+    bands = list(freq_band_dict.keys())
+    pre_posts = ["pre", "post"]
+    phases = ["inspi", "expi"]
+    chans = list(chan_list)
+    conds = list(conditions)
 
-    for chan_i, chan_name in enumerate(chan_list):
+    band_frex_sel = {band: (frex >= freq[0]) & (frex <= freq[-1])
+                    for band, freq in freq_band_dict.items()}
 
-        print_advancement(chan_i, len(chan_list), steps=[25, 50, 75])
+    max_cycles = np.max([len(cond_sel_dict[c]) for c in conds])
 
-        chan_loca = localist[chan_i]
+    Pxx = np.full( (len(conds), len(chans), len(bands), len(pre_posts), len(phases), max_cycles), np.nan, dtype=np.float32 )
 
-        for cond in conditions:
+    cond_to_i = {c: i for i, c in enumerate(conds)}
+    band_to_i = {b: i for i, b in enumerate(bands)}
+    prepost_to_i = {"pre": 0, "post": 1}
+    phase_to_i = {"inspi": 0, "expi": 1}
+
+    for chan_i, chan_name in enumerate(chans):
+        print_advancement(chan_i, len(chans), steps=[25, 50, 75])
+
+        for cond in conds:
+            c_i = cond_to_i[cond]
 
             for cycle_i, cycle_sel_df in enumerate(cond_sel_dict[cond]):
-
-                pre_post_indices = {"pre":  cycle_sel_df - 1, "post": cycle_sel_df,}
+                # indices in your TF array
+                pre_post_indices = {"pre": cycle_sel_df - 1, "post": cycle_sel_df}
 
                 for pre_post_sel, pre_post_sel_i in pre_post_indices.items():
+                    pp_i = prepost_to_i[pre_post_sel]
 
-                    _tf = tf_allchan_stretch_cleaned[chan_i, pre_post_sel_i]
+                    _tf = tf_allchan_stretch_cleaned[chan_i, pre_post_sel_i] 
 
                     for band, frex_sel in band_frex_sel.items():
+                        b_i = band_to_i[band]
 
-                        tf_band = _tf[frex_sel, :]
+                        tf_band = _tf[frex_sel, :]  
 
                         pxx_inspi = np.median(tf_band[:, inspi_sel])
                         pxx_expi  = np.median(tf_band[:, expi_sel])
 
-                        rows.append({"sujet": sujet, "cond": cond, "chan": chan_name, "ROI": chan_loca, "band": band,
-                            "pre/post": pre_post_sel, "phase": "inspi", "cycle": cycle_i, "Pxx": pxx_inspi,})
-                        rows.append({"sujet": sujet, "cond": cond, "chan": chan_name, "ROI": chan_loca, "band": band,
-                            "pre/post": pre_post_sel, "phase": "expi", "cycle": cycle_i, "Pxx": pxx_expi,})
+                        Pxx[c_i, chan_i, b_i, pp_i, phase_to_i["inspi"], cycle_i] = pxx_inspi
+                        Pxx[c_i, chan_i, b_i, pp_i, phase_to_i["expi"],  cycle_i] = pxx_expi
 
-    df_Pxx = pd.DataFrame.from_records(rows)
+    da_Pxx = xr.DataArray(
+        Pxx,
+        dims=("cond", "chan", "band", "pre_post", "phase", "cycle"),
+        coords={
+            "cond": conds,
+            "chan": chans,
+            "band": bands,
+            "pre_post": pre_posts,
+            "phase": phases,
+            "cycle": np.arange(max_cycles),
+            "ROI": ("chan", localist),   
+            "sujet": sujet               
+        },
+        name="Pxx"
+    )
+
 
     #### SAVE
     print('SAVE EXTRACT PXX', flush=True)
     os.chdir(os.path.join(path_precompute, 'TF', 'session'))
-    df_Pxx.to_excel(f'{sujet}_df_Pxx.xlsx')    
+    da_Pxx.to_netcdf(f'{sujet}_xr_Pxx.nc')    
 
     #### remove
     os.chdir(path_memmap)

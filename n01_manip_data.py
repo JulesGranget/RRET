@@ -444,7 +444,7 @@ def explore_data():
                                 'oc_ctrl' : resp_epoch[oc_control_sel], 'oc_chl' : resp_epoch[oc_chall_sel]}
         
         #### plot all cycles
-        os.chdir(os.path.join(path_results, 'respi'))
+        os.chdir(os.path.join(path_results, 'respi', 'epochs'))
 
         time_vec = np.linspace(-4, 4, resp_epoch.shape[-1])
         
