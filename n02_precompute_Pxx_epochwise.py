@@ -335,7 +335,7 @@ def precompute_tf_allconv(sujet, cond, norm_param):
     np.save(f'{sujet}_{cond}_tf_allchan_stretch_pre.npy', tf_allchan_stretch_pre)    
     np.save(f'{sujet}_{cond}_tf_allchan_stretch_post.npy', tf_allchan_stretch_post)   
 
-    os.chdir(os.path.join(path_precompute, 'RESP', 'epoch')) 
+    os.chdir(os.path.join(path_precompute, 'RESP', 'epochs')) 
     np.save(f'{sujet}_{cond}_pre_stretch_resp.npy', resp_stretch_pre)    
     np.save(f'{sujet}_{cond}_post_stretch_resp.npy', resp_stretch_post)    
 

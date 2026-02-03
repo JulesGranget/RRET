@@ -514,21 +514,26 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     phase_to_i = {"inspi": 0, "expi": 1}
 
     for chan_i, chan_name in enumerate(chans):
+
         print_advancement(chan_i, len(chans), steps=[25, 50, 75])
 
         for cond in conds:
+
             c_i = cond_to_i[cond]
 
             for cycle_i, cycle_sel_df in enumerate(cond_sel_dict[cond]):
+
                 # indices in your TF array
                 pre_post_indices = {"pre": cycle_sel_df - 1, "post": cycle_sel_df}
 
                 for pre_post_sel, pre_post_sel_i in pre_post_indices.items():
+
                     pp_i = prepost_to_i[pre_post_sel]
 
                     _tf = tf_allchan_stretch_cleaned[chan_i, pre_post_sel_i] 
 
                     for band, frex_sel in band_frex_sel.items():
+                        
                         b_i = band_to_i[band]
 
                         tf_band = _tf[frex_sel, :]  
@@ -920,42 +925,7 @@ if __name__ == '__main__':
 
 
 
-    #### identify nan
-
-    # if debug:
-
-    #     df_nan = pd.DataFrame()
-            
-    #     for sujet in sujet_list_allcond[cond]:
-
-    #         #### verify if already computed
-    #         os.chdir(os.path.join(path_precompute, 'TF', 'session'))
-
-    #         print(f'{sujet} {cond}', flush=True)
-
-    #         #### get params
-    #         data_allcond, resp_allcond, chanlist, localist = get_data_sujet(sujet)
-
-    #         for cond in conditions:
-
-    #             data, resp = data_allcond[cond], resp_allcond[cond]
-
-    #             if np.isnan(data).sum() != 0:
-
-    #                 time_vec_sec = np.arange(resp[0].size)/srate - (resp[0].size/srate)/2
-    #                 nan_vec = np.isnan(data[0,0])
-    #                 nan_vec[0] = False
-    #                 _start, _stop = np.where(np.diff(nan_vec))[0]
-    #                 _start, _stop = time_vec_sec[_start], time_vec_sec[_stop]
-    #                 _df = pd.DataFrame({'sujet' : [sujet], 'cond' : [cond], 'nan' : [np.isnan(data).sum()], 'start' : [_start], 'stop' : [_stop]})
-    #                 df_nan = pd.concat([df_nan, _df])
-
-    #             else:
-
-    #                 _df = pd.DataFrame({'sujet' : [sujet], 'cond' : [cond], 'nan' : [np.isnan(data).sum()], 'start' : [0], 'stop' : [0]})
-    #                 df_nan = pd.concat([df_nan, _df])
-
-    #     # just NS196 having nan
+    
 
 
 

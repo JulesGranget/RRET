@@ -22,7 +22,7 @@ import plotly.express as px
 ######## GENERATE ALLDF ########
 ################################
 
-def generate_all_df_Pxx():
+def generate_all_df_Pxx_wholecycle():
 
     os.chdir(os.path.join(path_results, 'LMM', 'df'))
 
@@ -39,6 +39,32 @@ def generate_all_df_Pxx():
             _df_add = pd.concat([pd.DataFrame({'band' : [band]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value']]], axis=1)
             
             df_R_Pxx.append(_df_add)
+
+    df_R_Pxx = pd.concat(df_R_Pxx)
+    df_R_Pxx = df_R_Pxx.rename(columns={'p.value' : 'pvalue'})
+
+    return df_R_Pxx
+
+
+def generate_all_df_Pxx_phasecycle():
+
+    os.chdir(os.path.join(path_results, 'LMM', 'df'))
+
+    df_loca_allsujet = get_df_loca_allsujet()
+    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
+
+    df_R_Pxx = []
+
+    for phase in ['inspi', 'expi']:
+
+        for band in freq_band_dict:
+
+            for ROI in ROI_list:
+
+                _df = pd.read_excel(f"{band}_Pxx_lmm_{ROI}_{phase}_res.xlsx")
+                _df_add = pd.concat([pd.DataFrame({'band' : [band]*_df.shape[0], 'phase' : [phase]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value']]], axis=1)
+                
+                df_R_Pxx.append(_df_add)
 
     df_R_Pxx = pd.concat(df_R_Pxx)
     df_R_Pxx = df_R_Pxx.rename(columns={'p.value' : 'pvalue'})
@@ -113,9 +139,11 @@ def p_to_stars(p):
 
 def export_res_Pxx():
 
-
     #### load df
-    df_R_Pxx = generate_all_df_Pxx()
+    df_R_Pxx = generate_all_df_Pxx_wholecycle()
+    df_R_Pxx['phase'] = ['whole'] * df_R_Pxx.shape[0]
+    df_R_Pxx_phase = generate_all_df_Pxx_phasecycle()
+    df_R_Pxx_all = pd.concat([df_R_Pxx, df_R_Pxx_phase])
 
     df_loca_allsujet = get_df_loca_allsujet()
     ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
@@ -128,74 +156,77 @@ def export_res_Pxx():
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet})"
 
     for ROI in ROI_list:
-        df_R_Pxx['ROI'] = df_R_Pxx['ROI'].replace({ROI: label_name_nsujet[ROI]})
-
-
+        df_R_Pxx_all['ROI'] = df_R_Pxx_all['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     #### plot
         #### all ROI
     band = 'theta'
+    cycle_plot_list = ['whole', 'inspi', 'expi']
 
-    for band in freq_band_dict:
+    for phase in cycle_plot_list:
 
-        _df_plot = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)'")
-        _df_plot['sig'] = _df_plot['pvalue'].apply(p_to_stars).copy()
+        for band in freq_band_dict:
 
-        g = sns.catplot(kind='bar', data=_df_plot, x='ROI', y='estimate', hue='term')
-        g.set_xticklabels(rotation=45, ha='right')
+            _df_plot = df_R_Pxx_all.query(f"band == '{band}' and term != '(Intercept)' and phase == '{phase}'")
+            _df_plot['sig'] = _df_plot['pvalue'].apply(p_to_stars).copy()
 
-        for ax in g.axes.flat:
-            for patch, (_, row) in zip(ax.patches, _df_plot.iterrows()):
-                if row['sig'] != '':
-                    height = patch.get_height()
-                    ax.text(
-                        patch.get_x() + patch.get_width() / 2,
-                        height,
-                        row['sig'],
-                        ha='center',
-                        va='bottom',
-                        fontsize=12,
-                        color='black'
-                    )
-        plt.title(band)
+            g = sns.catplot(kind='bar', data=_df_plot, x='ROI', y='estimate', hue='term')
+            g.set_xticklabels(rotation=45, ha='right')
 
-        # plt.show()
+            for ax in g.axes.flat:
+                for patch, (_, row) in zip(ax.patches, _df_plot.iterrows()):
+                    if row['sig'] != '':
+                        height = patch.get_height()
+                        ax.text(
+                            patch.get_x() + patch.get_width() / 2,
+                            height,
+                            row['sig'],
+                            ha='center',
+                            va='bottom',
+                            fontsize=12,
+                            color='black'
+                        )
+            plt.title(f"{phase} {band}")
 
-        os.chdir(os.path.join(path_results, 'LMM', 'fig', 'Pxx'))
-        g.savefig(f"{band}_allROI_barplot_LMM.jpeg")
-    
+            # plt.show()
+
+            os.chdir(os.path.join(path_results, 'LMM', 'fig', 'Pxx'))
+            g.savefig(f"{phase}_{band}_allROI_barplot_LMM.jpeg")
+        
 
         #### signi ROI
     band = 'theta'
 
-    for band in freq_band_dict:
+    for phase in cycle_plot_list:
 
-        ROI_signi_sel = df_R_Pxx.query(f"band == '{band}' and term == 'respoc:statechl' and pvalue < 0.05")['ROI'].values
-        _df_plot = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)' and ROI in {ROI_signi_sel.tolist()}")
-        _df_plot['sig'] = _df_plot['pvalue'].apply(p_to_stars).copy()
+        for band in freq_band_dict:
 
-        g = sns.catplot(kind='bar', data=_df_plot, x='ROI', y='estimate', hue='term')
-        g.set_xticklabels(rotation=45, ha='right')
+            ROI_signi_sel = df_R_Pxx_all.query(f"band == '{band}' and term == 'respoc:statechl' and pvalue < 0.05 and phase == '{phase}'")['ROI'].values
+            _df_plot = df_R_Pxx_all.query(f"band == '{band}' and term != '(Intercept)' and phase == '{phase}' and ROI in {ROI_signi_sel.tolist()}")
+            _df_plot['sig'] = _df_plot['pvalue'].apply(p_to_stars).copy()
 
-        for ax in g.axes.flat:
-            for patch, (_, row) in zip(ax.patches, _df_plot.iterrows()):
-                if row['sig'] != '':
-                    height = patch.get_height()
-                    ax.text(
-                        patch.get_x() + patch.get_width() / 2,
-                        height,
-                        row['sig'],
-                        ha='center',
-                        va='bottom',
-                        fontsize=12,
-                        color='black'
-                    )
-        plt.title(band)
+            g = sns.catplot(kind='bar', data=_df_plot, x='ROI', y='estimate', hue='term')
+            g.set_xticklabels(rotation=45, ha='right')
 
-        # plt.show()
+            for ax in g.axes.flat:
+                for patch, (_, row) in zip(ax.patches, _df_plot.iterrows()):
+                    if row['sig'] != '':
+                        height = patch.get_height()
+                        ax.text(
+                            patch.get_x() + patch.get_width() / 2,
+                            height,
+                            row['sig'],
+                            ha='center',
+                            va='bottom',
+                            fontsize=12,
+                            color='black'
+                        )
+            plt.title(f"{phase} {band}")
 
-        os.chdir(os.path.join(path_results, 'LMM', 'fig', 'Pxx'))
-        g.savefig(f"{band}_signiROI_barplot_LMM.jpeg")
+            # plt.show()
+
+            os.chdir(os.path.join(path_results, 'LMM', 'fig', 'Pxx'))
+            g.savefig(f"{phase}_{band}_signiROI_barplot_LMM.jpeg")
 
 
 
@@ -203,40 +234,43 @@ def export_res_Pxx():
 
     #### plotly
 
-    for band in freq_band_dict:
+    for phase in cycle_plot_list:
+
+        for band in freq_band_dict:
+            
+            _df_plot = df_R_Pxx_all.query(f"band == '{band}' and term != '(Intercept)' and phase == '{phase}'").copy()
+            _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
+
+            fig = px.bar(_df_plot, x="ROI", y="estimate", color="term", barmode="group", text="sig", title=band)
+
+            fig.update_layout(xaxis_tickangle=-45, yaxis_title="estimate", xaxis_title="ROI", legend_title="term")
+            fig.update_traces(textposition="outside", cliponaxis=False)
+
+            # fig.show()
+
+            outdir = os.path.join(path_results, "LMM", "fig", 'Pxx')
+            fig.write_html(os.path.join(outdir, f"{phase}_{band}_allROI_barplot_LMM.html"),
+                        include_plotlyjs="cdn")
         
-        _df_plot = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)'").copy()
-        _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
+    for phase in cycle_plot_list:
 
-        fig = px.bar(_df_plot, x="ROI", y="estimate", color="term", barmode="group", text="sig", title=band)
+        for band in freq_band_dict:
+            
+            ROI_signi_sel = df_R_Pxx_all.query(f"band == '{band}' and term == 'respoc:statechl' and pvalue < 0.05 and phase == '{phase}'")["ROI"].values
+            _df_plot = df_R_Pxx_all.query(f"band == '{band}' and term != '(Intercept)' and ROI in {ROI_signi_sel.tolist()}").copy()
 
-        fig.update_layout(xaxis_tickangle=-45, yaxis_title="estimate", xaxis_title="ROI", legend_title="term")
-        fig.update_traces(textposition="outside", cliponaxis=False)
+            _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
-        # fig.show()
+            fig = px.bar(_df_plot, x="ROI", y="estimate", color="term", barmode="group", text="sig", title=band)
 
-        outdir = os.path.join(path_results, "LMM", "fig", 'Pxx')
-        fig.write_html(os.path.join(outdir, f"{band}_allROI_barplot_LMM.html"),
+            fig.update_layout(xaxis_tickangle=-45, yaxis_title="estimate", xaxis_title="ROI", legend_title="term")
+            fig.update_traces(textposition="outside", cliponaxis=False)
+
+            # fig.show()
+
+            outdir = os.path.join(path_results, "LMM", "fig", 'Pxx')
+            fig.write_html(os.path.join(outdir, f"{phase}_{band}_signiROI_barplot_LMM.html"),
                     include_plotlyjs="cdn")
-        
-        
-    for band in freq_band_dict:
-        
-        ROI_signi_sel = df_R_Pxx.query(f"band == '{band}' and term == 'respoc:statechl' and pvalue < 0.05")["ROI"].values
-        _df_plot = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)' and ROI in {ROI_signi_sel.tolist()}").copy()
-
-        _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
-
-        fig = px.bar(_df_plot, x="ROI", y="estimate", color="term", barmode="group", text="sig", title=band)
-
-        fig.update_layout(xaxis_tickangle=-45, yaxis_title="estimate", xaxis_title="ROI", legend_title="term")
-        fig.update_traces(textposition="outside", cliponaxis=False)
-
-        # fig.show()
-
-        outdir = os.path.join(path_results, "LMM", "fig", 'Pxx')
-        fig.write_html(os.path.join(outdir, f"{band}_signiROI_barplot_LMM.html"),
-                   include_plotlyjs="cdn")
 
 
 
