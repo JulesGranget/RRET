@@ -2,9 +2,9 @@
 
 
 
-from n00_config_params import *
-from n00bis_config_analysis_functions import *
-from n01_manip_data import *
+from n00_config_O_params import *
+from n00bis_config_O_analysis_functions import *
+from n00ter_X_manip_data import *
 
 
 
@@ -19,47 +19,17 @@ def extract_oc_size(sujet):
 
     #### load
     os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
-    resp_features_cleaned = pd.read_excel(f'{sujet}_respfeatures_cleaned.xlsx')
-    df_resp_cycle_cleaned = pd.read_excel(f"{sujet}_cycles_info_cleaned.xlsx")
+    respfeatures = pd.read_excel(f'{sujet}_respfeatures_cleaned_label.xlsx')
 
     #### extract
-    cond_sel_dict = {}
-
-    try:
-
-        for cond in conditions:
-            if cond == 'rsp_ctrl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-            elif cond == 'rsp_chl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-            elif cond == 'oc_ctrl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-            elif cond == 'oc_chl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-
-            cond_sel_dict[cond] = np.where(_cond_sel)[0]
-
-    except:
-
-        for cond in conditions:
-            if cond == 'rsp_ctrl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values
-            elif cond == 'rsp_chl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 0).values
-            elif cond == 'oc_ctrl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values
-            elif cond == 'oc_chl':
-                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['isChallenge'] == 1).values & (df_resp_cycle_cleaned['occlusionType'] == 2).values 
-
-            cond_sel_dict[cond] = np.where(_cond_sel)[0]
-
     df_oc = []
 
     #cond = conditions[2]
     for cond in conditions:
 
-        os.chdir(os.path.join(path_precompute, 'RESP', 'epochs'))
-        resp_stretch = np.load(f"{sujet}_{cond}_post_stretch_resp.npy")
+        os.chdir(os.path.join(path_precompute, 'RESP', 'session'))
+        resp_stretch = np.load(f"{sujet}_{cond}_stretch_resp_post.npy")
+        _respfeature = respfeatures.query(f"cond == '{cond}'")
         
         oc_ratio = []
         oc_val = []
@@ -129,6 +99,10 @@ def extract_oc_size(sujet):
 
         _df_oc = pd.DataFrame({'sujet' : [sujet]*len(oc_ratio), 'cond' : [cond]*len(oc_ratio), 'cycle_i' : np.arange(len(oc_ratio)).tolist(), 'oc_ratio' : oc_ratio, 'oc_val' : oc_val})
 
+        if _respfeature.shape[0] != _df_oc.shape[0]:
+
+            raise ValueError('!!! NOT SAME CYCLE NUMBER !!!')
+
         df_oc.append(_df_oc)
 
     df_oc = pd.concat(df_oc)
@@ -145,7 +119,11 @@ def extract_oc_size(sujet):
     g.savefig(f"{sujet}_oc.png")
     plt.close('all')
 
+    os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
     df_oc.to_excel(f"{sujet}_df_oc.xlsx")
+
+
+
 
 
 ################################

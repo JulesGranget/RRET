@@ -3,9 +3,9 @@
 import joblib
 
 
-from n00_config_params import *
-from n00bis_config_analysis_functions import *
-from n01_manip_data import *
+from n00_config_O_params import *
+from n00bis_config_O_analysis_functions import *
+from n00ter_X_manip_data import *
 
 
 
@@ -19,11 +19,11 @@ from n01_manip_data import *
 def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
     #### verify if already computed
-    os.chdir(os.path.join(path_precompute, 'TF', 'session'))
+    # os.chdir(os.path.join(path_precompute, 'TF', 'session'))
 
-    if os.path.exists(f'{sujet}_xr_Pxx.nc'):
-        print(f'{sujet} ALREADY COMPUTED', flush=True)
-        return
+    # if os.path.exists(f"{sujet}_rsp_ctrl_tf_allchan_stretch_post.npy"):
+    #     print(f'{sujet} ALREADY COMPUTED', flush=True)
+    #     return
 
     print(f'TF PRECOMPUTE {sujet}', flush=True)
 
@@ -469,6 +469,31 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
             plt.pcolormesh(np.median(tf_plot, axis=0))
             plt.title(f"{cond}, n_cycle:{resp_plot.shape[0]}")
             plt.show()
+
+    #### add cond label to respfeature and save
+    df_respfeature_label = []
+    df_respfeature_label_pre = []
+
+    for cond in conditions:
+
+        _df = resp_features_cleaned.iloc[cond_sel_dict[cond]]
+        _df['sujet'] = [sujet] * _df.shape[0]
+        _df['cond'] = [cond] * _df.shape[0]
+
+        _df_pre = resp_features_cleaned.iloc[cond_sel_dict_pre[cond]]
+        _df_pre['sujet'] = [sujet] * _df_pre.shape[0]
+        _df_pre['cond'] = [cond] * _df_pre.shape[0]
+
+        df_respfeature_label.append(_df)
+        df_respfeature_label_pre.append(_df_pre)
+
+    df_respfeature_label = pd.concat(df_respfeature_label)
+    df_respfeature_label_pre = pd.concat(df_respfeature_label_pre)
+
+    os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
+    df_respfeature_label.to_excel(f'{sujet}_respfeatures_cleaned_label.xlsx')
+    df_respfeature_label_pre.to_excel(f'{sujet}_respfeatures_cleaned_label_pre.xlsx')
+    df_resp_cycle_cleaned.to_excel(f"{sujet}_cycles_info_cleaned.xlsx")
     
     #### save stretch tf
     print(f'SAVE TF STRETCH', flush=True)
@@ -482,12 +507,35 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
         np.save(f'{sujet}_{cond}_stretch_resp_post.npy', resp_stretch_cleaned[cond_sel_dict[cond]])
         np.save(f'{sujet}_{cond}_stretch_resp_pre.npy', resp_stretch_cleaned[cond_sel_dict_pre[cond]])
 
-    os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
-    resp_features_cleaned.to_excel(f'{sujet}_respfeatures_cleaned.xlsx')
-    df_resp_cycle_cleaned.to_excel(f"{sujet}_cycles_info_cleaned.xlsx")
+    #### remove
+    os.chdir(path_memmap)
+    os.remove(f'memmap_{sujet}_tf_conv.npy')
+    os.remove(f'memmap_{sujet}_rscore_param.npy')
+    os.remove(f'memmap_{sujet}_tf_conv_norm.npy')
 
-    #### extract power
+    del data, resp, tf_allconv, tf_allconv_norm
+
+
+
+
+################################
+######## EXTRACT POWER ########
+################################
+
+
+def extract_power(sujet):
+
     print("EXTRACT POWER", flush=True)
+
+    #### verify if already computed
+    os.chdir(os.path.join(path_precompute, 'TF', 'session'))
+
+    if os.path.exists(f'{sujet}_xr_Pxx.nc'):
+        print(f'{sujet} ALREADY COMPUTED', flush=True)
+        return
+
+    #### params
+    chanlist, localist = get_chanlist(sujet)
 
     idx = np.arange(stretch_point_TF)
     inspi_sel = idx <= stretch_point_TF / 2
@@ -496,53 +544,56 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     bands = list(freq_band_dict.keys())
     pre_posts = ["pre", "post"]
     phases = ["inspi", "expi"]
-    chans = list(chan_list)
-    conds = list(conditions)
 
     band_frex_sel = {band: (frex >= freq[0]) & (frex <= freq[-1])
                     for band, freq in freq_band_dict.items()}
+    
+    #### load
+    os.chdir(os.path.join(path_precompute, 'TF', 'session'))
 
-    max_cycles = np.max([len(cond_sel_dict[c]) for c in conds])
+    tf_allcond = {}
 
-    Pxx = np.full( (len(conds), len(chans), len(bands), len(pre_posts), len(phases), max_cycles), np.nan, dtype=np.float32 )
+    for pre_post in pre_posts:
 
-    cond_to_i = {c: i for i, c in enumerate(conds)}
-    band_to_i = {b: i for i, b in enumerate(bands)}
-    prepost_to_i = {"pre": 0, "post": 1}
-    phase_to_i = {"inspi": 0, "expi": 1}
+        tf_allcond[pre_post] = {}
 
-    for chan_i, chan_name in enumerate(chans):
-        print_advancement(chan_i, len(chans), steps=[25, 50, 75])
+        for cond in conditions:
 
-        for cond in conds:
-            c_i = cond_to_i[cond]
+            tf_allcond[pre_post][cond] = np.load(f'{sujet}_{cond}_tf_allchan_stretch_{pre_post}.npy')
 
-            for cycle_i, cycle_sel_df in enumerate(cond_sel_dict[cond]):
-                # indices in your TF array
-                pre_post_indices = {"pre": cycle_sel_df - 1, "post": cycle_sel_df}
+    #### extract
+    max_cycles = np.max([tf_allcond['post'][cond].shape[1] for cond in conditions])
 
-                for pre_post_sel, pre_post_sel_i in pre_post_indices.items():
-                    pp_i = prepost_to_i[pre_post_sel]
+    Pxx = np.full( (len(conditions), len(chanlist), len(bands), len(pre_posts), len(phases), max_cycles), np.nan, dtype=np.float32 )
 
-                    _tf = tf_allchan_stretch_cleaned[chan_i, pre_post_sel_i] 
+    for chan_i, chan_name in enumerate(chanlist):
 
-                    for band, frex_sel in band_frex_sel.items():
-                        b_i = band_to_i[band]
+        print_advancement(chan_i, len(chanlist), steps=[25, 50, 75])
 
-                        tf_band = _tf[frex_sel, :]  
+        for cond_i, cond in enumerate(conditions):
 
-                        pxx_inspi = np.median(tf_band[:, inspi_sel])
-                        pxx_expi  = np.median(tf_band[:, expi_sel])
+            for pre_post_i, pre_post in enumerate(pre_posts):
 
-                        Pxx[c_i, chan_i, b_i, pp_i, phase_to_i["inspi"], cycle_i] = pxx_inspi
-                        Pxx[c_i, chan_i, b_i, pp_i, phase_to_i["expi"],  cycle_i] = pxx_expi
+                ncycle = tf_allcond[pre_post][cond].shape[1]
+
+                for cycle_i in range(ncycle):
+
+                    for band_i, (band, frex_sel) in enumerate(band_frex_sel.items()):
+
+                        _tf = tf_allcond[pre_post][cond][chan_i, cycle_i][frex_sel, :]  
+
+                        pxx_inspi = np.median(_tf[:, inspi_sel])
+                        pxx_expi  = np.median(_tf[:, expi_sel])
+
+                        Pxx[cond_i, chan_i, band_i, pre_post_i, 0, cycle_i] = pxx_inspi
+                        Pxx[cond_i, chan_i, band_i, pre_post_i, 1,  cycle_i] = pxx_expi
 
     da_Pxx = xr.DataArray(
         Pxx,
         dims=("cond", "chan", "band", "pre_post", "phase", "cycle"),
         coords={
-            "cond": conds,
-            "chan": chans,
+            "cond": conditions,
+            "chan": chanlist,
             "band": bands,
             "pre_post": pre_posts,
             "phase": phases,
@@ -558,14 +609,6 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     print('SAVE EXTRACT PXX', flush=True)
     os.chdir(os.path.join(path_precompute, 'TF', 'session'))
     da_Pxx.to_netcdf(f'{sujet}_xr_Pxx.nc')    
-
-    #### remove
-    os.chdir(path_memmap)
-    os.remove(f'memmap_{sujet}_tf_conv.npy')
-    os.remove(f'memmap_{sujet}_rscore_param.npy')
-    os.remove(f'memmap_{sujet}_tf_conv_norm.npy')
-
-    del data, resp, tf_allconv, tf_allconv_norm
 
     print('done', flush=True)
 
@@ -587,6 +630,7 @@ if __name__ == '__main__':
     for sujet in sujet_list:
 
         precompute_tf_allconv_from_epoch(sujet, norm_param)
+        extract_power(sujet)
 
 
 

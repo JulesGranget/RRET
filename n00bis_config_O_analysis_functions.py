@@ -26,7 +26,7 @@ import seaborn as sns
 
 import neurokit2 as nk
 
-from n00_config_params import *
+from n00_config_O_params import *
 
 
 debug = False
@@ -1138,7 +1138,7 @@ def norm_tf(sujet, tf_conv, norm_method):
 
     path_source = os.getcwd()
 
-    chan_list_sel = chan_list_eeg_short
+    chan_list_sel = get_chanlist(sujet)
 
     if norm_method not in ['rscore', 'zscore']:
 
@@ -1211,21 +1211,21 @@ def norm_tf(sujet, tf_conv, norm_method):
         axs[0].set_title('raw')
         fig.colorbar(im, ax=axs[0])
 
-        tf_baseline = 10*np.log10(tf_test / baselines.loc[chan_list_eeg[nchan], :, 'median'].values.reshape(-1,1))
+        tf_baseline = 10*np.log10(tf_test / baselines.loc[chan_list_sel[nchan], :, 'median'].values.reshape(-1,1))
         vmin = np.percentile(tf_baseline.reshape(-1),percentile_sel)
         vmax = np.percentile(tf_baseline.reshape(-1),100-percentile_sel)
         im = axs[1].pcolormesh(tf_baseline, vmin=vmin, vmax=vmax)
         axs[1].set_title('db')
         fig.colorbar(im, ax=axs[1])
 
-        tf_baseline = (tf_test - baselines.loc[chan_list_eeg[nchan],:,'mean'].values.reshape(-1,1)) / baselines.loc[chan_list_eeg[nchan],:,'std'].values.reshape(-1,1)
+        tf_baseline = (tf_test - baselines.loc[chan_list_sel[nchan],:,'mean'].values.reshape(-1,1)) / baselines.loc[chan_list_sel[nchan],:,'std'].values.reshape(-1,1)
         vmin = np.percentile(tf_baseline.reshape(-1),percentile_sel)
         vmax = np.percentile(tf_baseline.reshape(-1),100-percentile_sel)
         im = axs[2].pcolormesh(tf_baseline, vmin=vmin, vmax=vmax)
         axs[2].set_title('zscore')
         fig.colorbar(im, ax=axs[2])
 
-        tf_baseline = (tf_test - baselines.loc[chan_list_eeg[nchan],:,'median'].values.reshape(-1,1)) / baselines.loc[chan_list_eeg[nchan],:,'mad'].values.reshape(-1,1)
+        tf_baseline = (tf_test - baselines.loc[chan_list_sel[nchan],:,'median'].values.reshape(-1,1)) / baselines.loc[chan_list_sel[nchan],:,'mad'].values.reshape(-1,1)
         vmin = np.percentile(tf_baseline.reshape(-1),percentile_sel)
         vmax = np.percentile(tf_baseline.reshape(-1),100-percentile_sel)
         im = axs[3].pcolormesh(tf_baseline, vmin=vmin, vmax=vmax)

@@ -21,7 +21,8 @@ sujet_list = ['NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208',
               'NS211',  'NS213',  'NS215']
 
 
-
+ROI_short_list = ['Amygdala', 'insula-ant', 'lateralorbitofrontal', 'Hippocampus', 'insula-pos', 'medialorbitofrontal', 'insula', 'postcentral',
+                      'precentral', 'Brain-Stem']
 
 
 cond_list = ['VS', 'CHARGE']
@@ -33,6 +34,7 @@ sujet_list_allcond = {'rsp_ctrl' : ['NS086_02', 'NS131_02', 'NS202', 'NS203', 'N
                       'oc_chl' : ['NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208', 'NS211', 'NS213', 'NS215']}
 
 conditions = ['rsp_ctrl', 'rsp_chl', 'oc_ctrl', 'oc_chl']
+phase_cycle_list = ['whole', 'inspi', 'expi']
 
 freq_band_dict = {'theta' : [4,8], 'alpha' : [8,12], 'beta' : [12,50], 'gamma' : [60, 150]}
 
@@ -54,7 +56,7 @@ if PC_ID == 'jules-ubuntu1':
 
     path_main_workdir = '/home/jules/Documents/RRET_JULES/Scripts'
     path_general = '/home/jules/Documents/RRET_JULES'
-    n_core = 23
+    n_core = 18
 
     
 path_data = os.path.join(path_general, 'Data')
@@ -73,6 +75,19 @@ os.chdir(init_workdir)
 ########################################
 
 respi_cycle_search_time = [-2, 6] #sec
+
+
+
+
+
+########################################
+######## RF analysis ########
+########################################
+
+rf_metric_list = ['duration', 'cycle_freq', 'amplitude', 'volume', 'oc_ratio', 'oc_val']
+
+
+
 
 
 ################################
