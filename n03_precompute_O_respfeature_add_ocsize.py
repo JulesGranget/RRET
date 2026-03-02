@@ -122,7 +122,105 @@ def extract_oc_size(sujet):
     os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
     df_oc.to_excel(f"{sujet}_df_oc.xlsx")
 
+    
 
+
+def generate_df_R():
+
+    #### load resp features
+    rf_metrics_raw = ['cycle_duration', 'inspi_duration', 'expi_duration', 'cycle_freq', 'inspi_volume',
+       'expi_volume', 'total_amplitude', 'inspi_amplitude', 'expi_amplitude',
+       'total_volume']
+    phase_cycle_list = ['whole', 'inspi', 'expi']
+    mapping_pase_cycle_list = {'whole' : ['cycle_duration', 'cycle_freq', 'total_amplitude', 'total_volume', 'oc_ratio', 'oc_val'], 
+                               'inspi' : ['inspi_duration', 'inspi_cycle_freq', 'inspi_amplitude', 'inspi_volume', 'oc_ratio', 'oc_val'], 
+                               'expi' : ['expi_duration', 'expi_cycle_freq', 'expi_amplitude', 'expi_volume', 'oc_ratio', 'oc_val']}
+    rf_metric_allphase_cycle = ['duration', 'cycle_freq', 'amplitude', 'volume', 'oc_ratio', 'oc_val']
+
+    R_keep_OC_metric = ['inspi_volume', 'expi_volume', 'total_amplitude', 'inspi_amplitude', 'expi_amplitude', 'total_volume', 'oc_ratio', 'oc_val']
+    
+    df_rf_allcond = []
+    df_rf_allcond_OC = []
+
+    #sujet = sujet_list[0]
+    for sujet in sujet_list:
+
+        # load respiration features
+        os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
+        _oc_respfeatures = pd.read_excel(f'{sujet}_df_oc.xlsx')
+
+        _respfeatures = pd.read_excel(f'{sujet}_respfeatures_cleaned_label.xlsx')
+        _respfeatures_pre = pd.read_excel(f'{sujet}_respfeatures_cleaned_label_pre.xlsx')
+        
+        for cond_i, cond in enumerate(conditions):
+
+            resp_pre  = _respfeatures_pre.query(f"cond == '{cond}'").drop(columns=['Unnamed: 0'])[rf_metrics_raw]
+            resp_post = _respfeatures.query(f"cond == '{cond}'").drop(columns=['Unnamed: 0'])[rf_metrics_raw]
+
+            resp_pre[['oc_ratio', 'oc_val']] = _oc_respfeatures.query(f"cond == '{cond}'")[['oc_ratio', 'oc_val']]
+            resp_post[['oc_ratio', 'oc_val']] = _oc_respfeatures.query(f"cond == '{cond}'")[['oc_ratio', 'oc_val']]
+
+            resp_pre['inspi_cycle_freq'], resp_pre['expi_cycle_freq'] = 1/resp_pre['inspi_duration'], 1/resp_pre['expi_duration']
+            resp_post['inspi_cycle_freq'], resp_post['expi_cycle_freq'] = 1/resp_post['inspi_duration'], 1/resp_post['expi_duration']
+            
+            #### allmetric
+            for _phase_cycle in phase_cycle_list:
+
+                _df_map_metric_pre = resp_pre[mapping_pase_cycle_list[_phase_cycle]].copy()
+                _df_map_metric_pre['phase'] = [_phase_cycle] * _df_map_metric_pre.shape[0]
+                _df_map_metric_pre['pre_post'] = ['pre'] * _df_map_metric_pre.shape[0]
+                _df_map_metric_pre['cond'] = [cond] * _df_map_metric_pre.shape[0]
+                _df_map_metric_pre['sujet'] = [sujet] * _df_map_metric_pre.shape[0]
+
+                _df_map_metric_post = resp_post[mapping_pase_cycle_list[_phase_cycle]].copy()
+                _df_map_metric_post['phase'] = [_phase_cycle] * _df_map_metric_post.shape[0]
+                _df_map_metric_post['pre_post'] = ['post'] * _df_map_metric_post.shape[0]
+                _df_map_metric_post['cond'] = [cond] * _df_map_metric_post.shape[0]
+                _df_map_metric_post['sujet'] = [sujet] * _df_map_metric_post.shape[0]
+
+                if _phase_cycle == 'expi':
+                    _rep_dict_col = {col : col[5:] for col in _df_map_metric_pre.columns if col.find(_phase_cycle) != -1}
+                if _phase_cycle == 'inspi':
+                    _rep_dict_col = {col : col[6:] for col in _df_map_metric_pre.columns if col.find(_phase_cycle) != -1}
+                if _phase_cycle == 'whole':
+                    _rep_dict_col = {'cycle_duration' : 'duration', 'total_amplitude' : 'amplitude', 'total_volume' : 'volume'}
+
+                _df_map_metric_pre = _df_map_metric_pre.rename(columns=_rep_dict_col)
+                _df_map_metric_post = _df_map_metric_post.rename(columns=_rep_dict_col)
+
+                _df_map_prepost = pd.concat([_df_map_metric_pre, _df_map_metric_post], axis=0)
+
+                df_rf_allcond.append(_df_map_prepost)
+
+            #### OC metric
+            resp_pre_short = resp_pre[R_keep_OC_metric]
+            _rep_dict_col = {col : f"pre_{col}" for col in resp_pre_short.columns}
+            _df_map_metric_pre = resp_pre_short.rename(columns=_rep_dict_col)
+
+            resp_post_short = resp_post[R_keep_OC_metric]
+            _rep_dict_col = {col : f"post_{col}" for col in resp_post_short.columns}
+            _df_map_metric_post = resp_post_short.rename(columns=_rep_dict_col)
+
+            _df_R_OC = pd.concat([_df_map_metric_pre, _df_map_metric_post], axis=1)
+            _df_R_OC = _df_R_OC.drop(columns=['pre_oc_ratio', 'pre_oc_val'])
+
+            _df_R_OC['cond'] = [cond] * _df_R_OC.shape[0]
+            _df_R_OC['sujet'] = [sujet] * _df_R_OC.shape[0]
+            
+            df_rf_allcond_OC.append(_df_R_OC)
+
+    df_rf_allcond = pd.concat(df_rf_allcond)
+    df_rf_allcond_OC = pd.concat(df_rf_allcond_OC)
+
+    filename = f"df_R_RFonly_allmetric.xlsx"
+    filepath = os.path.join(path_precompute, 'RESP', 'df_R', filename)
+
+    df_rf_allcond.to_excel(filepath)
+
+    filename = f"df_R_RFonly_selOC.xlsx"
+    filepath = os.path.join(path_precompute, 'RESP', 'df_R', filename)
+
+    df_rf_allcond_OC.to_excel(filepath)
 
 
 
@@ -138,6 +236,6 @@ if __name__ == '__main__':
 
         extract_oc_size(sujet)
 
-
+    generate_df_R()
 
                         

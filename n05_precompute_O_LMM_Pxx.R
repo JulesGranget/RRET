@@ -13,11 +13,79 @@ library(broom.mixed)
 library(writexl)
 library(dplyr)
 
+library(patchwork)
 
 
 ########################
 ######## Pxx ########
 ########################
+
+
+
+fit_model_with_fallback <- function(df, tol_sing = 1e-4, maxfun = 2e5) {
+  
+  forms <- list(
+    lmer_sujet_chan = Pxx ~ resp * state + (1 | sujet/chan),                
+    lmer_sujet  = Pxx ~ resp * state + (1 | sujet),                     
+    lm_fixed    = Pxx ~ resp * state                                    
+  )
+  
+  ctrl <- lmerControl(
+    optimizer   = "bobyqa",
+    optCtrl     = list(maxfun = maxfun),
+    calc.derivs = FALSE
+  )
+  
+  bad_fit <- function(mod) {
+    # singular OR lme4 convergence messages (often in optinfo)
+    isSingular(mod, tol = tol_sing) ||
+      !is.null(mod@optinfo$conv$lme4$messages) ||
+      !is.null(mod@optinfo$conv$messages)
+  }
+  
+  get_conv_msgs <- function(mod) {
+    msgs <- c()
+    if (!is.null(mod@optinfo$conv$lme4$messages)) msgs <- c(msgs, mod@optinfo$conv$lme4$messages)
+    if (!is.null(mod@optinfo$conv$messages))      msgs <- c(msgs, mod@optinfo$conv$messages)
+    if (length(msgs) == 0) return(NA_character_)
+    paste(unique(msgs), collapse = " | ")
+  }
+  
+  for (nm in names(forms)) {
+    f <- forms[[nm]]
+    
+    if (nm == "lm_fixed") {
+      mod <- lm(f, data = df)
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- NA_character_
+      attr(mod, "is_singular") <- NA
+      return(mod)
+    }
+    
+    mod <- suppressWarnings(
+      suppressMessages(
+        try(lmer(f, data = df, control = ctrl), silent = TRUE)
+      )
+    )
+    
+    if (inherits(mod, "try-error")) next
+    
+    if (!bad_fit(mod)) {
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- get_conv_msgs(mod)
+      attr(mod, "is_singular") <- isSingular(mod, tol = tol_sing)
+      return(mod)
+    }
+  }
+  
+  # absolute last-resort safeguard
+  mod <- lm(forms$lm_fixed, data = df)
+  attr(mod, "fit_stage")   <- "lm_fixed"
+  attr(mod, "conv_msgs")   <- NA_character_
+  attr(mod, "is_singular") <- NA
+  mod
+}
+
 
 root = "/home/jules/Documents/RRET_JULES/Analyses/precompute/TF/session/df_R"
 outputdir_fig = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/diagnosis"
@@ -31,9 +99,9 @@ band = band_list[1]
 
 for (band in band_list) {
   
-  # Load the Excel data
-  filename = paste0("/df_R_", band, ".xlsx")
-  df_raw <- read_excel(paste(root, filename, sep  = "/"))
+  filename <- paste0("/df_R_", band, ".xlsx")
+  df_raw <- read_excel(paste(root, filename, sep = "/"))
+  
   df_raw$chan <- paste0(df_raw$sujet, "_", df_raw$chan)
   
   ROI_list_raw <- unique(df_raw$ROI)
@@ -43,18 +111,18 @@ for (band in band_list) {
     
     df_phase <- subset(df_raw, phase_cycle == phase_cycle_sel)
     
-    ROI_sel = ROI_list[1]
+    ROI_sel = ROI_list[17]
     
     for (ROI_sel in ROI_list) {
       
-      withCallingHandlers({
+      tryCatch({
         
         print(ROI_sel)
-        
-        filename_export_diagnostic = paste(band, phase_cycle_sel, ROI_sel, sep = "_")
+        filename_export_diagnostic <- paste(band, phase_cycle_sel, ROI_sel, sep = "_")
         
         df_oneROI <- subset(df_phase, ROI == ROI_sel)
         
+        # Optional: counts per subject (quick QA)
         df_count <- df_oneROI %>%
           group_by(sujet) %>%
           summarise(
@@ -62,154 +130,138 @@ for (band in band_list) {
             n_cycle = n_distinct(cycle),
             .groups = "drop"
           )
-        
         print(df_count)
         
-        df <- df_oneROI[c("sujet", "chan", "cycle", "Pxx", "resp", "state")]
+        # Keep only required columns
+        df <- df_oneROI[, c("sujet", "chan", "cycle", "Pxx", "resp", "state")]
         
-        # Convert categorical variables to factors
+        # Factors / reference levels
         df$sujet <- factor(df$sujet)
-        df$chan <- factor(df$chan)
+        df$chan  <- factor(df$chan)
         df$resp  <- factor(df$resp)
         df$state <- factor(df$state)
         
-        df$resp  <- relevel(df$resp,  ref = "rsp")   # baseline for resp
-        df$state <- relevel(df$state, ref = "ctrl")  # baseline for state
+        df$resp  <- relevel(df$resp,  ref = "rsp")
+        df$state <- relevel(df$state, ref = "ctrl")
         
-        #### FIG 1
-        p <- ggplot(df, aes(x = sujet, y = Pxx, color = sujet, fill = sujet)) +
+        # ---- MODEL
+        model <- fit_model_with_fallback(df)
+        
+        fit_stage <- attr(model, "fit_stage")
+        conv_msgs <- attr(model, "conv_msgs")
+        is_sing   <- attr(model, "is_singular")
+        
+        message("✅ Model fit stage: ", fit_stage,
+                if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "",
+                if (!is.na(conv_msgs)) paste0(" | conv=", conv_msgs) else "")
+        
+        # ---- stats for histogram subtitle
+        skew_chan <- round(skewness(df$Pxx), 2)
+        kurt_chan <- round(kurtosis(df$Pxx), 2)
+        
+        # ------------------------------------------------------------
+        # PLOT 1: subject-wise boxplot (ggplot)
+        # ------------------------------------------------------------
+        p_box <- ggplot(df, aes(x = sujet, y = Pxx, color = sujet, fill = sujet)) +
           geom_boxplot(width = .2, alpha = .5, outlier.alpha = 0,
                        position = position_dodge(.9)) +
           stat_summary(fun = median, geom = "point", size = 2,
-                       position = position_dodge(.9), color = "white")+
+                       position = position_dodge(.9), color = "white") +
           labs(
-            title    = paste(filename_export_diagnostic, "Pxx", sep = "_")
+            title = paste(filename_export_diagnostic, "Pxx — Subject-wise", sep = " | ")
           ) +
           theme(
-            plot.title    = element_text(hjust = 0.5),
+            plot.title = element_text(hjust = 0.5),
+            legend.position = "none"
           )
         
-        p
-        
-        file_boxplot_subjectwise = paste("BOXPLOT", filename_export_diagnostic, "Pxx_subjectwise.png", sep = "_")
-        # then explicitly:
-        ggsave(paste(outputdir_fig, file_boxplot_subjectwise, sep = "/"), plot = p, width = 8, height = 5)
-        
-        #### MODEL
-        #simple_form <- Pxx ~ resp * state + (resp | sujet/chan)
-        #simple_form  <- Pxx ~ resp * state + (1 | sujet/chan)
-        simple_form  <- Pxx ~ resp * state + (1 | sujet/chan)
-        simple_form_refit  <- Pxx ~ resp * state
-        
-        model <- tryCatch({
-          
-          warn_triggered <- FALSE  # will catch if any warning is raised
-          
-          mod_attempt <- withCallingHandlers(
-            expr = {
-              lmer(
-                simple_form,
-                data = df,
-                control = lmerControl(optCtrl = list(maxfun = 2e5))
-              )
-            },
-            warning = function(w) {
-              message("⚠️ Warning during lmer(): ", conditionMessage(w))
-              warn_triggered <<- TRUE
-              invokeRestart("muffleWarning")  # suppress so execution continues
-            }
+        # ------------------------------------------------------------
+        # PLOT 2: histogram (ggplot)
+        # ------------------------------------------------------------
+        p_hist <- ggplot(df, aes(x = Pxx)) +
+          geom_histogram(bins = 30, fill = "lightblue", color = "white") +
+          labs(
+            title    = "Histogram",
+            subtitle = paste("kurtosis:", kurt_chan, "| skewness:", skew_chan),
+            x        = "Pxx values",
+            y        = "Count"
+          ) +
+          theme(
+            plot.title = element_text(hjust = 0.5)
           )
-          
-          # Force fallback if warning was raised or model is singular
-          if (warn_triggered || isSingular(mod_attempt, tol = 1e-4)) {
-            message("⚠️️ Fallback to lm() due to warning or singular fit")
-            stop("Trigger fallback to lm")
-          }
-          
-          mod_attempt  # return valid model if all checks passed
-          
-        }, error = function(e) {
-          lm(simple_form_refit, data = df)
-        })
         
-        summary(model)
+        # ------------------------------------------------------------
+        # PLOT 3: QQ plot of residuals (ggplot)
+        # ------------------------------------------------------------
+        res_df <- data.frame(res = resid(model))
         
+        p_qq <- ggplot(res_df, aes(sample = res)) +
+          stat_qq() +
+          stat_qq_line() +
+          labs(
+            title = "QQ plot (residuals)",
+            subtitle = paste0("fit_stage=", fit_stage,
+                              if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "")
+          ) +
+          theme(
+            plot.title = element_text(hjust = 0.5)
+          )
         
-        #### FIG 2
-        filename_hist = paste(band, "histogram", ROI_sel, phase_cycle_sel, "Pxx.png", sep = "_")
+        # ------------------------------------------------------------
+        # COMBINE into ONE figure (patchwork)
+        # Layout: boxplot on top, hist + qq below
+        # ------------------------------------------------------------
+        p_all <- p_box / (p_hist + p_qq) +
+          plot_annotation(
+            title = paste("Diagnostics:", filename_export_diagnostic),
+            theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+          )
         
-        skew_chan = round(skewness(df$Pxx), 2)
-        kurt_chan = round(kurtosis(df$Pxx), 2)
+        print(p_all)
         
-        png(
-          filename = paste(outputdir_fig, filename_hist, sep = "/"),
-          width    = 800,    # width in pixels
-          height   = 600,    # height in pixels
-          res      = 100     # resolution (pixels per inch)
+        # ------------------------------------------------------------
+        # SAVE one single PNG
+        # ------------------------------------------------------------
+        file_diag <- paste("DIAGNOSTIC", filename_export_diagnostic, "Pxx.png", sep = "_")
+        
+        ggsave(
+          filename = paste(outputdir_fig, file_diag, sep = "/"),
+          plot     = p_all,
+          width    = 12,
+          height   = 8,
+          dpi      = 150
         )
         
-        hist(
-          df$Pxx,
-          breaks = 30,
-          main   = "",          # leave main blank for now
-          xlab   = "Pxx values",
-          ylab   = "Resp",
-          col    = "lightblue",
-          border = "white"
-        )
         
-        title(
-          main     = paste(band, ROI_sel, phase_cycle_sel, "Pxx", "kurtosis:", kurt_chan, "skewness", skew_chan),
-          adj      = 0.5,       # 0.5 = center
-          cex.main = 1.5,       # main title size
-          font.main= 2,         # bold
-          cex.sub  = 1.0        # subtitle size
-        )
+        # ------------------------------------------------------------
+        # EXPORT MODEL RESULTS
+        # - tab_model for HTML-like report
+        # - broom.mixed fixed effects + add fit diagnostics
+        # ------------------------------------------------------------
         
-        dev.off()
-        
-        #### FIG 3
-        filename_qqplot = paste(band, "qqplot", ROI_sel, phase_cycle_sel, "Pxx.png", sep = "_")
-        
-        png(
-          filename = paste(outputdir_fig, filename_qqplot, sep = "/"),
-          width    = 800,    # width in pixels
-          height   = 600,    # height in pixels
-          res      = 100     # resolution (pixels per inch)
-        )
-        
-        qqnorm(resid(model))
-        qqline(resid(model))  # points fall nicely onto the line - good!
-        
-        title(
-          sub     = paste(band, ROI_sel, "qqplot"),
-          adj      = 0.5,       # 0.5 = center
-          cex.main = 1.5,       # main title size
-          font.main= 2,         # bold
-          cex.sub  = 1.0        # subtitle size
-        )
-        
-        dev.off()
-        
-        #### EXPORT MODEL RES
         tab_model(model, show.re.var = TRUE, show.icc = TRUE, show.r2 = TRUE, show.se = TRUE)
         
-        model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE)
+        model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+          mutate(
+            fit_stage   = fit_stage,
+            singular    = if (!is.na(is_sing)) is_sing else NA,
+            conv_msgs   = if (!is.na(conv_msgs)) conv_msgs else NA,
+            band        = band,
+            phase_cycle = phase_cycle_sel,
+            ROI         = ROI_sel
+          )
         
-        filesxlsx_ROI = paste(band, "Pxx_lmm", ROI_sel, phase_cycle_sel, "res.xlsx", sep = "_")
+        filesxlsx_ROI <- paste("RES", filename_export_diagnostic, "Pxx.xlsx", sep = "_")
         writexl::write_xlsx(model_df, paste(outputdir_df_lmm, filesxlsx_ROI, sep = "/"))
         
-      }, warning = function(w) {
-        message("Warning: ", conditionMessage(w))  # shows immediately
-        invokeRestart("muffleWarning")
+      }, error = function(e) {
+        message("❌ Error for ", band, " / ", phase_cycle_sel, " / ", ROI_sel, " : ", conditionMessage(e))
       })
       
-      
     }
-    
   }
-  
 }
+
 
 
 
@@ -222,6 +274,72 @@ for (band in band_list) {
 ################
 #### OLS_a ####
 ################
+
+
+fit_model_with_fallback <- function(df, tol_sing = 1e-4, maxfun = 2e5) {
+  
+  forms <- list(
+    lmer_sujet_chan = OLS_a ~ resp * state + (1 | sujet/chan),                
+    lmer_sujet  = OLS_a ~ resp * state + (1 | sujet),                     
+    lm_fixed    = OLS_a ~ resp * state                                    
+  )
+  
+  ctrl <- lmerControl(
+    optimizer   = "bobyqa",
+    optCtrl     = list(maxfun = maxfun),
+    calc.derivs = FALSE
+  )
+  
+  bad_fit <- function(mod) {
+    # singular OR lme4 convergence messages (often in optinfo)
+    isSingular(mod, tol = tol_sing) ||
+      !is.null(mod@optinfo$conv$lme4$messages) ||
+      !is.null(mod@optinfo$conv$messages)
+  }
+  
+  get_conv_msgs <- function(mod) {
+    msgs <- c()
+    if (!is.null(mod@optinfo$conv$lme4$messages)) msgs <- c(msgs, mod@optinfo$conv$lme4$messages)
+    if (!is.null(mod@optinfo$conv$messages))      msgs <- c(msgs, mod@optinfo$conv$messages)
+    if (length(msgs) == 0) return(NA_character_)
+    paste(unique(msgs), collapse = " | ")
+  }
+  
+  for (nm in names(forms)) {
+    f <- forms[[nm]]
+    
+    if (nm == "lm_fixed") {
+      mod <- lm(f, data = df)
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- NA_character_
+      attr(mod, "is_singular") <- NA
+      return(mod)
+    }
+    
+    mod <- suppressWarnings(
+      suppressMessages(
+        try(lmer(f, data = df, control = ctrl), silent = TRUE)
+      )
+    )
+    
+    if (inherits(mod, "try-error")) next
+    
+    if (!bad_fit(mod)) {
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- get_conv_msgs(mod)
+      attr(mod, "is_singular") <- isSingular(mod, tol = tol_sing)
+      return(mod)
+    }
+  }
+  
+  # absolute last-resort safeguard
+  mod <- lm(forms$lm_fixed, data = df)
+  attr(mod, "fit_stage")   <- "lm_fixed"
+  attr(mod, "conv_msgs")   <- NA_character_
+  attr(mod, "is_singular") <- NA
+  mod
+}
+
 
 root = "/home/jules/Documents/RRET_JULES/Analyses/precompute/TF/session/df_R"
 outputdir_fig = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/diagnosis"
@@ -250,183 +368,1440 @@ pre_post_sel = pre_post_list[1]
 for (pre_post_sel in pre_post_list) {
   
   df_pre_post <- subset(df_raw, phase_protocol == pre_post_sel)
-
+  
   for (phase_cycle_sel in phase_cycle_list) {
     
     df_phase_cycle <- subset(df_pre_post, phase_cycle == phase_cycle_sel)
-  
+    
     for (rf_metric_sel in rf_metrics) {
       
       df_rf_metric <- subset(df_phase_cycle, rf_metric == rf_metric_sel)
+      
+      for (band_sel in band_list) {
+        
+        df_band <- subset(df_rf_metric, band == band_sel)
+        
+        for (ROI_sel in ROI_list) {
+      
+          tryCatch({
+            
+            print(ROI_sel)
+            filename_export_diagnostic <- paste(band_sel, pre_post_sel, phase_cycle_sel, rf_metric_sel, ROI_sel, sep = "_")
+            
+            df_oneROI <- subset(df_band, ROI == ROI_sel)
+            
+            df <- df_oneROI[, c("sujet", "chan", "OLS_a", "resp", "state")]
+            
+            # Optional: counts per subject (quick QA)
+            df_count <- df %>%
+              group_by(sujet) %>%
+              summarise(
+                n_chan  = n_distinct(chan),
+                .groups = "drop"
+              )
+            print(df_count)
+            
+            # Factors / reference levels
+            df$sujet <- factor(df$sujet)
+            df$chan  <- factor(df$chan)
+            df$resp  <- factor(df$resp)
+            df$state <- factor(df$state)
+            
+            df$resp  <- relevel(df$resp,  ref = "rsp")
+            df$state <- relevel(df$state, ref = "ctrl")
+            
+            # ---- MODEL
+            model <- fit_model_with_fallback(df)
+            
+            fit_stage <- attr(model, "fit_stage")
+            conv_msgs <- attr(model, "conv_msgs")
+            is_sing   <- attr(model, "is_singular")
+            
+            message("✅ Model fit stage: ", fit_stage,
+                    if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "",
+                    if (!is.na(conv_msgs)) paste0(" | conv=", conv_msgs) else "")
+            
+            # ---- stats for histogram subtitle
+            skew_chan <- round(skewness(df$OLS_a), 2)
+            kurt_chan <- round(kurtosis(df$OLS_a), 2)
+            
+            # ------------------------------------------------------------
+            # PLOT 1: subject-wise boxplot (ggplot)
+            # ------------------------------------------------------------
+            p_box <- ggplot(df, aes(x = sujet, y = OLS_a, color = sujet, fill = sujet)) +
+              geom_boxplot(width = .2, alpha = .5, outlier.alpha = 0,
+                           position = position_dodge(.9)) +
+              stat_summary(fun = median, geom = "point", size = 2,
+                           position = position_dodge(.9), color = "white") +
+              labs(
+                title = paste(filename_export_diagnostic, "OLS_a — Subject-wise", sep = " | ")
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5),
+                legend.position = "none"
+              )
+            
+            # ------------------------------------------------------------
+            # PLOT 2: histogram (ggplot)
+            # ------------------------------------------------------------
+            p_hist <- ggplot(df, aes(x = OLS_a)) +
+              geom_histogram(bins = 30, fill = "lightblue", color = "white") +
+              labs(
+                title    = "Histogram",
+                subtitle = paste("kurtosis:", kurt_chan, "| skewness:", skew_chan),
+                x        = "OLS_a values",
+                y        = "Count"
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5)
+              )
+            
+            # ------------------------------------------------------------
+            # PLOT 3: QQ plot of residuals (ggplot)
+            # ------------------------------------------------------------
+            res_df <- data.frame(res = resid(model))
+            
+            p_qq <- ggplot(res_df, aes(sample = res)) +
+              stat_qq() +
+              stat_qq_line() +
+              labs(
+                title = "QQ plot (residuals)",
+                subtitle = paste0("fit_stage=", fit_stage,
+                                  if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "")
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5)
+              )
+            
+            # ------------------------------------------------------------
+            # COMBINE into ONE figure (patchwork)
+            # Layout: boxplot on top, hist + qq below
+            # ------------------------------------------------------------
+            p_all <- p_box / (p_hist + p_qq) +
+              plot_annotation(
+                title = paste("Diagnostics:", filename_export_diagnostic),
+                theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+              )
+            
+            print(p_all)
+            
+            # ------------------------------------------------------------
+            # SAVE one single PNG
+            # ------------------------------------------------------------
+            file_diag <- paste("DIAGNOSTIC", filename_export_diagnostic, "OLSa.png", sep = "_")
+            
+            ggsave(
+              filename = paste(outputdir_fig, file_diag, sep = "/"),
+              plot     = p_all,
+              width    = 12,
+              height   = 8,
+              dpi      = 150
+            )
+            
+            
+            # ------------------------------------------------------------
+            # EXPORT MODEL RESULTS
+            # - tab_model for HTML-like report
+            # - broom.mixed fixed effects + add fit diagnostics
+            # ------------------------------------------------------------
+            
+            tab_model(model, show.re.var = TRUE, show.icc = TRUE, show.r2 = TRUE, show.se = TRUE)
+            
+            model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+              mutate(
+                fit_stage   = fit_stage,
+                singular    = if (!is.na(is_sing)) is_sing else NA,
+                conv_msgs   = if (!is.na(conv_msgs)) conv_msgs else NA,
+                band        = band,
+                phase_cycle = phase_cycle_sel,
+                ROI         = ROI_sel
+              )
+            
+            filesxlsx_ROI <- paste("RES", filename_export_diagnostic, "OLSa.xlsx", sep = "_")
+            writexl::write_xlsx(model_df, paste(outputdir_df_lmm, filesxlsx_ROI, sep = "/"))
+            
+          }, error = function(e) {
+            message("❌ Error for ", band, " / ", phase_cycle_sel, " / ", ROI_sel, " : ", conditionMessage(e))
+          })
+        }
+      }  
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+########################
+#### RB_LMM_CTRL ####
+########################
+
+
+fit_model_with_fallback <- function(df, tol_sing = 1e-4, maxfun = 2e5) {
+  
+  forms <- list(
+    lmer_sujet_rdmslope = Pxx ~ rf_metric_val + (rf_metric_val | sujet),                
+    lmer_sujet  = Pxx ~ rf_metric_val + (1 | sujet),                     
+    lm_fixed    = Pxx ~ rf_metric_val                                    
+  )
+  
+  #forms <- list(
+  #  glmer_sujet_rdmslope = Pxx ~ rf_metric_val + (rf_metric_val | sujet),                
+  #  glmer_sujet  = Pxx ~ rf_metric_val + (1 | sujet),                     
+  #  glm_fixed    = Pxx ~ rf_metric_val                                    
+  #)
+  
+  ctrl <- lmerControl(
+   optimizer   = "bobyqa",
+   optCtrl     = list(maxfun = maxfun),
+   calc.derivs = FALSE
+  )
+  
+  #ctrl <- glmerControl(
+  #  optimizer   = "bobyqa",
+  #  optCtrl     = list(maxfun = maxfun),
+  #  calc.derivs = FALSE
+  #)
+  
+  bad_fit <- function(mod) {
+    # singular OR lme4 convergence messages (often in optinfo)
+    isSingular(mod, tol = tol_sing) ||
+      !is.null(mod@optinfo$conv$lme4$messages) ||
+      !is.null(mod@optinfo$conv$messages)
+  }
+  
+  get_conv_msgs <- function(mod) {
+    msgs <- c()
+    if (!is.null(mod@optinfo$conv$lme4$messages)) msgs <- c(msgs, mod@optinfo$conv$lme4$messages)
+    if (!is.null(mod@optinfo$conv$messages))      msgs <- c(msgs, mod@optinfo$conv$messages)
+    if (length(msgs) == 0) return(NA_character_)
+    paste(unique(msgs), collapse = " | ")
+  }
+  
+  for (nm in names(forms)) {
+    f <- forms[[nm]]
     
+    if (nm == "lm_fixed") {
+      mod <- lm(f, data = df)
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- NA_character_
+      attr(mod, "is_singular") <- NA
+      return(mod)
+    }
+    
+    #if (nm == "glm_fixed") {
+    #  mod <- glm(f, data = df)
+    #  attr(mod, "fit_stage")   <- nm
+    #  attr(mod, "conv_msgs")   <- NA_character_
+    #  attr(mod, "is_singular") <- NA
+    #  return(mod)
+    #}
+    
+    mod <- suppressWarnings(
+      suppressMessages(
+        try(lmer(f, data = df, control = ctrl), silent = TRUE)
+        #try(glmer(f, data = df, control = ctrl, family = Gamma(link = "log")), silent = TRUE)
+      )
+    )
+    
+    if (inherits(mod, "try-error")) next
+    
+    if (!bad_fit(mod)) {
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- get_conv_msgs(mod)
+      attr(mod, "is_singular") <- isSingular(mod, tol = tol_sing)
+      return(mod)
+    }
+  }
+  
+  # absolute last-resort safeguard
+  mod <- lm(forms$lm_fixed, data = df)
+  attr(mod, "fit_stage")   <- "lm_fixed"
+  attr(mod, "conv_msgs")   <- NA_character_
+  attr(mod, "is_singular") <- NA
+  mod
+  
+  #mod <- glm(forms$glm_fixed, data = df)
+  #attr(mod, "fit_stage")   <- "glm_fixed"
+  #attr(mod, "conv_msgs")   <- NA_character_
+  #attr(mod, "is_singular") <- NA
+  #mod
+}
+
+
+root = "/home/jules/Documents/RRET_JULES/Analyses/precompute/TF/session/df_R"
+outputdir_fig = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/diagnosis"
+outputdir_df_lmm = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/df"
+
+band_list <- c("theta", "beta", "gamma")
+phase_cycle_list <- c("inspi", "expi")
+
+# Load the Excel data
+filename = paste0("/df_reg_ALLROI_ALLDATA_R.xlsx")
+df_raw <- read_excel(paste(root, filename, sep  = "/"))
+
+ROI_list_raw <- unique(df_raw$ROI)
+ROI_list <- ROI_list_raw[!grepl("UNSORTED", ROI_list_raw)]
+
+rf_metrics <- unique(df_raw$rf_metric)
+
+phase_cycle_sel = phase_cycle_list[1]
+rf_metric_sel = rf_metrics[1]
+band_sel = band_list[1]
+ROI_sel = ROI_list[1]
+pre_post_sel = 'post'
+
+for (phase_cycle_sel in phase_cycle_list) {
+  
+  df_phase_cycle <- subset(df_raw, phase_cycle == phase_cycle_sel)
+  
+  for (rf_metric_sel in rf_metrics) {
+    
+    df_rf_metric <- subset(df_phase_cycle, rf_metric == rf_metric_sel)
+    
+    for (band_sel in band_list) {
+      
+      df_band <- subset(df_rf_metric, band == band_sel)
+      
+      for (ROI_sel in ROI_list) {
+        
+        tryCatch({
+          
+          print(ROI_sel)
+          filename_export_diagnostic <- paste(band_sel, pre_post_sel, phase_cycle_sel, rf_metric_sel, ROI_sel, sep = "_")
+          
+          df_oneROI <- subset(df_band, ROI == ROI_sel)
+          
+          df <- df_oneROI[, c("sujet", "rf_metric_val", "Pxx")]
+          
+          # Optional: counts per subject (quick QA)
+          df_count <- df %>%
+            group_by(sujet) %>%
+            summarise()
+          
+          print(df_count)
+          
+          # Factors / reference levels
+          df$sujet <- factor(df$sujet)
+
+          # ---- MODEL
+          model <- fit_model_with_fallback(df)
+          
+          fit_stage <- attr(model, "fit_stage")
+          conv_msgs <- attr(model, "conv_msgs")
+          is_sing   <- attr(model, "is_singular")
+          
+          message("✅ Model fit stage: ", fit_stage,
+                  if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "",
+                  if (!is.na(conv_msgs)) paste0(" | conv=", conv_msgs) else "")
+          
+          # ---- stats for histogram subtitle
+          skew_chan <- round(skewness(df$rf_metric_val), 2)
+          kurt_chan <- round(kurtosis(df$rf_metric_val), 2)
+          
+          
+
+          # ------------------------------------------------------------
+          # PREP: residuals + fitted for diagnostics
+          # ------------------------------------------------------------
+          diag_df <- data.frame(
+            fitted = as.numeric(fitted(model)),
+            resid  = as.numeric(resid(model))
+          )
+          
+          # Optional: Scale-Location values (sqrt(|standardized residuals|))
+          # For merMod models, use scaled residuals when available; otherwise fallback
+          std_res <- tryCatch({
+            as.numeric(resid(model, type = "pearson"))
+          }, error = function(e) {
+            # fallback: standardize manually
+            as.numeric(scale(diag_df$resid))
+          })
+          
+          diag_df$scale_loc <- sqrt(abs(std_res))
+          
+          
+          # ------------------------------------------------------------
+          # PLOT 1: subject-wise boxplot (ggplot)
+          # ------------------------------------------------------------
+          p_box <- ggplot(df, aes(x = sujet, y = Pxx, color = sujet, fill = sujet)) +
+            geom_boxplot(width = .2, alpha = .5, outlier.alpha = 0,
+                         position = position_dodge(.9)) +
+            stat_summary(fun = median, geom = "point", size = 2,
+                         position = position_dodge(.9), color = "white") +
+            labs(
+              title = paste(filename_export_diagnostic, "Pxx — Subject-wise", sep = " | ")
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5),
+              legend.position = "none"
+            )
+          
+          # ------------------------------------------------------------
+          # PLOT 2: histogram (ggplot)
+          # ------------------------------------------------------------
+          p_hist <- ggplot(df, aes(x = Pxx)) +
+            geom_histogram(bins = 30, fill = "lightblue", color = "white") +
+            labs(
+              title    = "Histogram",
+              subtitle = paste("kurtosis:", kurt_chan, "| skewness:", skew_chan),
+              x        = "Pxx values",
+              y        = "Count"
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5)
+            )
+          
+          # ------------------------------------------------------------
+          # PLOT 3: QQ plot of residuals (ggplot)
+          # ------------------------------------------------------------
+          res_df <- data.frame(res = resid(model))
+          
+          p_qq <- ggplot(res_df, aes(sample = res)) +
+            stat_qq() +
+            stat_qq_line() +
+            labs(
+              title = "QQ plot (residuals)",
+              subtitle = paste0("fit_stage=", fit_stage,
+                                if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "")
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5)
+            )
+          
+          # ------------------------------------------------------------
+          # PLOT 4: Residuals vs Fitted (homoskedasticity check)
+          # Equivalent to: plot(fitted(m7), resid(m7))
+          # ------------------------------------------------------------
+          
+          diag_df <- data.frame(
+            fitted = as.numeric(fitted(model)),
+            resid  = as.numeric(resid(model))
+          )
+          
+          p_homo <- ggplot(diag_df, aes(x = fitted, y = resid)) +
+            geom_point(alpha = 0.35, size = 1) +
+            geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+            geom_smooth(method = "loess", se = FALSE, color = "black") +
+            labs(
+              title = "Residuals vs Fitted",
+              subtitle = "Homoskedasticity check (look for constant spread, no funnel)",
+              x = "Fitted values",
+              y = "Residuals"
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5)
+            )
+          
+          # ------------------------------------------------------------
+          # COMBINE into ONE figure (patchwork)
+          # Layout: boxplot on top, hist + qq below
+          # ------------------------------------------------------------
+          p_all <- (p_box + p_hist) / (p_qq + p_homo) +
+            plot_annotation(
+              title = paste("Diagnostics:", filename_export_diagnostic),
+              theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+            )
+          
+          print(p_all)
+          
+          # ------------------------------------------------------------
+          # SAVE one single PNG
+          # ------------------------------------------------------------
+          file_diag <- paste("CTRL_DIAGNOSTIC", filename_export_diagnostic, "rf_metric_val.png", sep = "_")
+          
+          ggsave(
+            filename = paste(outputdir_fig, file_diag, sep = "/"),
+            plot     = p_all,
+            width    = 12,
+            height   = 8,
+            dpi      = 150
+          )
+          
+          
+          # ------------------------------------------------------------
+          # EXPORT MODEL RESULTS
+          # - tab_model for HTML-like report
+          # - broom.mixed fixed effects + add fit diagnostics
+          # ------------------------------------------------------------
+          
+          tab_model(model, show.re.var = TRUE, show.icc = TRUE, show.r2 = TRUE, show.se = TRUE)
+          
+          model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+            mutate(
+              fit_stage   = fit_stage,
+              singular    = if (!is.na(is_sing)) is_sing else NA,
+              conv_msgs   = if (!is.na(conv_msgs)) conv_msgs else NA,
+              band        = band_sel,
+              phase_cycle = phase_cycle_sel,
+              rf_metric   = rf_metric_sel,
+              ROI         = ROI_sel
+            )
+          
+          filesxlsx_ROI <- paste("CTRL_RES", filename_export_diagnostic, "LMM.xlsx", sep = "_")
+          writexl::write_xlsx(model_df, paste(outputdir_df_lmm, filesxlsx_ROI, sep = "/"))
+          
+        }, error = function(e) {
+          message("❌ Error for ", band, " / ", phase_cycle_sel, " / ", ROI_sel, " : ", conditionMessage(e))
+        })
+      }
+    }  
+  }
+}
+
+
+
+
+
+
+############################
+#### RB_LMM_OC_ALLCOND ####
+############################
+
+
+fit_model_with_fallback <- function(df, tol_sing = 1e-4, maxfun = 2e5) {
+  
+  forms <- list(
+    lmer_sujet_rdmslope = Pxx ~ rf_metric_val * cond + (rf_metric_val | sujet),                
+    lmer_sujet  = Pxx ~ rf_metric_val * cond + (1 | sujet),                     
+    lm_fixed    = Pxx ~ rf_metric_val * cond                                  
+  )
+  
+  #forms <- list(
+  #  glmer_sujet_rdmslope = Pxx ~ rf_metric_val + (rf_metric_val | sujet),                
+  #  glmer_sujet  = Pxx ~ rf_metric_val + (1 | sujet),                     
+  #  glm_fixed    = Pxx ~ rf_metric_val                                    
+  #)
+  
+  ctrl <- lmerControl(
+    optimizer   = "bobyqa",
+    optCtrl     = list(maxfun = maxfun),
+    calc.derivs = FALSE
+  )
+  
+  #ctrl <- glmerControl(
+  #  optimizer   = "bobyqa",
+  #  optCtrl     = list(maxfun = maxfun),
+  #  calc.derivs = FALSE
+  #)
+  
+  bad_fit <- function(mod) {
+    # singular OR lme4 convergence messages (often in optinfo)
+    isSingular(mod, tol = tol_sing) ||
+      !is.null(mod@optinfo$conv$lme4$messages) ||
+      !is.null(mod@optinfo$conv$messages)
+  }
+  
+  get_conv_msgs <- function(mod) {
+    msgs <- c()
+    if (!is.null(mod@optinfo$conv$lme4$messages)) msgs <- c(msgs, mod@optinfo$conv$lme4$messages)
+    if (!is.null(mod@optinfo$conv$messages))      msgs <- c(msgs, mod@optinfo$conv$messages)
+    if (length(msgs) == 0) return(NA_character_)
+    paste(unique(msgs), collapse = " | ")
+  }
+  
+  for (nm in names(forms)) {
+    f <- forms[[nm]]
+    
+    if (nm == "lm_fixed") {
+      mod <- lm(f, data = df)
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- NA_character_
+      attr(mod, "is_singular") <- NA
+      return(mod)
+    }
+    
+    #if (nm == "glm_fixed") {
+    #  mod <- glm(f, data = df)
+    #  attr(mod, "fit_stage")   <- nm
+    #  attr(mod, "conv_msgs")   <- NA_character_
+    #  attr(mod, "is_singular") <- NA
+    #  return(mod)
+    #}
+    
+    mod <- suppressWarnings(
+      suppressMessages(
+        try(lmer(f, data = df, control = ctrl), silent = TRUE)
+        #try(glmer(f, data = df, control = ctrl, family = Gamma(link = "log")), silent = TRUE)
+      )
+    )
+    
+    if (inherits(mod, "try-error")) next
+    
+    if (!bad_fit(mod)) {
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- get_conv_msgs(mod)
+      attr(mod, "is_singular") <- isSingular(mod, tol = tol_sing)
+      return(mod)
+    }
+  }
+  
+  # absolute last-resort safeguard
+  mod <- lm(forms$lm_fixed, data = df)
+  attr(mod, "fit_stage")   <- "lm_fixed"
+  attr(mod, "conv_msgs")   <- NA_character_
+  attr(mod, "is_singular") <- NA
+  mod
+  
+  #mod <- glm(forms$glm_fixed, data = df)
+  #attr(mod, "fit_stage")   <- "glm_fixed"
+  #attr(mod, "conv_msgs")   <- NA_character_
+  #attr(mod, "is_singular") <- NA
+  #mod
+}
+
+
+root = "/home/jules/Documents/RRET_JULES/Analyses/precompute/TF/session/df_R"
+outputdir_fig = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/diagnosis"
+outputdir_df_lmm = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/df"
+
+band_list <- c("theta", "beta", "gamma")
+phase_cycle_list <- c("inspi", "expi")
+cond_sel_OC <- c("oc_ctrl", "oc_chl")
+
+# Load the Excel data
+filename = paste0("/df_reg_ALLROI_ALLDATA_R.xlsx")
+df_raw <- read_excel(paste(root, filename, sep  = "/"))
+df_raw_oc <- subset(df_raw, cond == cond_sel_OC)
+
+ROI_list_raw <- unique(df_raw$ROI)
+ROI_list <- ROI_list_raw[!grepl("UNSORTED", ROI_list_raw)]
+
+rf_metrics <- unique(df_raw$rf_metric)
+
+phase_cycle_sel = phase_cycle_list[1]
+rf_metric_sel = rf_metrics[1]
+band_sel = band_list[1]
+ROI_sel = ROI_list[1]
+pre_post_sel = 'post'
+
+for (phase_cycle_sel in phase_cycle_list) {
+  
+  df_phase_cycle <- subset(df_raw_oc, phase_cycle == phase_cycle_sel)
+  
+  for (rf_metric_sel in rf_metrics) {
+    
+    df_rf_metric <- subset(df_phase_cycle, rf_metric == rf_metric_sel)
+    
+    for (band_sel in band_list) {
+      
+      df_band <- subset(df_rf_metric, band == band_sel)
+      
+      for (ROI_sel in ROI_list) {
+        
+        tryCatch({
+          
+          update_iteration <- paste(cond_sel, band_sel, pre_post_sel, phase_cycle_sel, rf_metric_sel, ROI_sel, sep = "_")
+          print(update_iteration)
+          
+          filename_export_diagnostic <- paste(band_sel, pre_post_sel, phase_cycle_sel, rf_metric_sel, ROI_sel, sep = "_")
+          
+          df_oneROI <- subset(df_band, ROI == ROI_sel)
+          
+          df <- df_oneROI[, c("sujet", "cond", "rf_metric_val", "Pxx")]
+          
+          df$sujet <- factor(df$sujet)
+          df$cond  <- factor(df$cond)
+
+          df$cond  <- relevel(df$cond,  ref = "oc_ctrl")
+          
+          # Optional: counts per subject (quick QA)
+          df_count <- df %>%
+            group_by(sujet) %>%
+            summarise()
+          
+          print(df_count)
+          
+          # Factors / reference levels
+          df$sujet <- factor(df$sujet)
+          
+          # ---- MODEL
+          model <- fit_model_with_fallback(df)
+          
+          fit_stage <- attr(model, "fit_stage")
+          conv_msgs <- attr(model, "conv_msgs")
+          is_sing   <- attr(model, "is_singular")
+          
+          message("✅ Model fit stage: ", fit_stage,
+                  if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "",
+                  if (!is.na(conv_msgs)) paste0(" | conv=", conv_msgs) else "")
+          
+          # ---- stats for histogram subtitle
+          skew_chan <- round(skewness(df$rf_metric_val), 2)
+          kurt_chan <- round(kurtosis(df$rf_metric_val), 2)
+          
+          
+          
+          # ------------------------------------------------------------
+          # PREP: residuals + fitted for diagnostics
+          # ------------------------------------------------------------
+          diag_df <- data.frame(
+            fitted = as.numeric(fitted(model)),
+            resid  = as.numeric(resid(model))
+          )
+          
+          # Optional: Scale-Location values (sqrt(|standardized residuals|))
+          # For merMod models, use scaled residuals when available; otherwise fallback
+          std_res <- tryCatch({
+            as.numeric(resid(model, type = "pearson"))
+          }, error = function(e) {
+            # fallback: standardize manually
+            as.numeric(scale(diag_df$resid))
+          })
+          
+          diag_df$scale_loc <- sqrt(abs(std_res))
+          
+          
+          # ------------------------------------------------------------
+          # PLOT 1: subject-wise boxplot (ggplot)
+          # ------------------------------------------------------------
+          p_box <- ggplot(df, aes(x = sujet, y = Pxx, color = sujet, fill = sujet)) +
+            geom_boxplot(width = .2, alpha = .5, outlier.alpha = 0,
+                         position = position_dodge(.9)) +
+            stat_summary(fun = median, geom = "point", size = 2,
+                         position = position_dodge(.9), color = "white") +
+            labs(
+              title = paste(filename_export_diagnostic, "Pxx — Subject-wise", sep = " | ")
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5),
+              legend.position = "none"
+            )
+          
+          # ------------------------------------------------------------
+          # PLOT 2: histogram (ggplot)
+          # ------------------------------------------------------------
+          p_hist <- ggplot(df, aes(x = Pxx)) +
+            geom_histogram(bins = 30, fill = "lightblue", color = "white") +
+            labs(
+              title    = "Histogram",
+              subtitle = paste("kurtosis:", kurt_chan, "| skewness:", skew_chan),
+              x        = "Pxx values",
+              y        = "Count"
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5)
+            )
+          
+          # ------------------------------------------------------------
+          # PLOT 3: QQ plot of residuals (ggplot)
+          # ------------------------------------------------------------
+          res_df <- data.frame(res = resid(model))
+          
+          p_qq <- ggplot(res_df, aes(sample = res)) +
+            stat_qq() +
+            stat_qq_line() +
+            labs(
+              title = "QQ plot (residuals)",
+              subtitle = paste0("fit_stage=", fit_stage,
+                                if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "")
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5)
+            )
+          
+          # ------------------------------------------------------------
+          # PLOT 4: Residuals vs Fitted (homoskedasticity check)
+          # Equivalent to: plot(fitted(m7), resid(m7))
+          # ------------------------------------------------------------
+          
+          diag_df <- data.frame(
+            fitted = as.numeric(fitted(model)),
+            resid  = as.numeric(resid(model))
+          )
+          
+          p_homo <- ggplot(diag_df, aes(x = fitted, y = resid)) +
+            geom_point(alpha = 0.35, size = 1) +
+            geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+            geom_smooth(method = "loess", se = FALSE, color = "black") +
+            labs(
+              title = "Residuals vs Fitted",
+              subtitle = "Homoskedasticity check (look for constant spread, no funnel)",
+              x = "Fitted values",
+              y = "Residuals"
+            ) +
+            theme(
+              plot.title = element_text(hjust = 0.5)
+            )
+          
+          # ------------------------------------------------------------
+          # COMBINE into ONE figure (patchwork)
+          # Layout: boxplot on top, hist + qq below
+          # ------------------------------------------------------------
+          p_all <- (p_box + p_hist) / (p_qq + p_homo) +
+            plot_annotation(
+              title = paste("Diagnostics:", filename_export_diagnostic),
+              theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+            )
+          
+          print(p_all)
+          
+          # ------------------------------------------------------------
+          # SAVE one single PNG
+          # ------------------------------------------------------------
+          file_diag <- paste("OC_ALLCOND_DIAGNOSTIC", filename_export_diagnostic, "rf_metric_val.png", sep = "_")
+          
+          ggsave(
+            filename = paste(outputdir_fig, file_diag, sep = "/"),
+            plot     = p_all,
+            width    = 12,
+            height   = 8,
+            dpi      = 150
+          )
+          
+          
+          # ------------------------------------------------------------
+          # EXPORT MODEL RESULTS
+          # - tab_model for HTML-like report
+          # - broom.mixed fixed effects + add fit diagnostics
+          # ------------------------------------------------------------
+          
+          tab_model(model, show.re.var = TRUE, show.icc = TRUE, show.r2 = TRUE, show.se = TRUE)
+          
+          model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+            mutate(
+              fit_stage   = fit_stage,
+              singular    = if (!is.na(is_sing)) is_sing else NA,
+              conv_msgs   = if (!is.na(conv_msgs)) conv_msgs else NA,
+              band        = band_sel,
+              phase_cycle = phase_cycle_sel,
+              rf_metric   = rf_metric_sel,
+              ROI         = ROI_sel
+            )
+          
+          filesxlsx_ROI <- paste("OC_ALLCOND_RES", filename_export_diagnostic, "LMM.xlsx", sep = "_")
+          writexl::write_xlsx(model_df, paste(outputdir_df_lmm, filesxlsx_ROI, sep = "/"))
+          
+        }, error = function(e) {
+          message("❌ Error for ", band, " / ", phase_cycle_sel, " / ", ROI_sel, " : ", conditionMessage(e))
+        })
+      }
+    }  
+  }
+}
+
+
+
+
+
+################################
+#### RB_LMM_OC_UNIQUE_COND ####
+################################
+
+
+fit_model_with_fallback <- function(df, tol_sing = 1e-4, maxfun = 2e5) {
+  
+  forms <- list(
+    lmer_sujet_rdmslope = Pxx ~ rf_metric_val + (rf_metric_val | sujet),                
+    lmer_sujet  = Pxx ~ rf_metric_val + (1 | sujet),                     
+    lm_fixed    = Pxx ~ rf_metric_val                                  
+  )
+  
+  #forms <- list(
+  #  glmer_sujet_rdmslope = Pxx ~ rf_metric_val + (rf_metric_val | sujet),                
+  #  glmer_sujet  = Pxx ~ rf_metric_val + (1 | sujet),                     
+  #  glm_fixed    = Pxx ~ rf_metric_val                                    
+  #)
+  
+  ctrl <- lmerControl(
+    optimizer   = "bobyqa",
+    optCtrl     = list(maxfun = maxfun),
+    calc.derivs = FALSE
+  )
+  
+  #ctrl <- glmerControl(
+  #  optimizer   = "bobyqa",
+  #  optCtrl     = list(maxfun = maxfun),
+  #  calc.derivs = FALSE
+  #)
+  
+  bad_fit <- function(mod) {
+    # singular OR lme4 convergence messages (often in optinfo)
+    isSingular(mod, tol = tol_sing) ||
+      !is.null(mod@optinfo$conv$lme4$messages) ||
+      !is.null(mod@optinfo$conv$messages)
+  }
+  
+  get_conv_msgs <- function(mod) {
+    msgs <- c()
+    if (!is.null(mod@optinfo$conv$lme4$messages)) msgs <- c(msgs, mod@optinfo$conv$lme4$messages)
+    if (!is.null(mod@optinfo$conv$messages))      msgs <- c(msgs, mod@optinfo$conv$messages)
+    if (length(msgs) == 0) return(NA_character_)
+    paste(unique(msgs), collapse = " | ")
+  }
+  
+  for (nm in names(forms)) {
+    f <- forms[[nm]]
+    
+    if (nm == "lm_fixed") {
+      mod <- lm(f, data = df)
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- NA_character_
+      attr(mod, "is_singular") <- NA
+      return(mod)
+    }
+    
+    #if (nm == "glm_fixed") {
+    #  mod <- glm(f, data = df)
+    #  attr(mod, "fit_stage")   <- nm
+    #  attr(mod, "conv_msgs")   <- NA_character_
+    #  attr(mod, "is_singular") <- NA
+    #  return(mod)
+    #}
+    
+    mod <- suppressWarnings(
+      suppressMessages(
+        try(lmer(f, data = df, control = ctrl), silent = TRUE)
+        #try(glmer(f, data = df, control = ctrl, family = Gamma(link = "log")), silent = TRUE)
+      )
+    )
+    
+    if (inherits(mod, "try-error")) next
+    
+    if (!bad_fit(mod)) {
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- get_conv_msgs(mod)
+      attr(mod, "is_singular") <- isSingular(mod, tol = tol_sing)
+      return(mod)
+    }
+  }
+  
+  # absolute last-resort safeguard
+  mod <- lm(forms$lm_fixed, data = df)
+  attr(mod, "fit_stage")   <- "lm_fixed"
+  attr(mod, "conv_msgs")   <- NA_character_
+  attr(mod, "is_singular") <- NA
+  mod
+  
+  #mod <- glm(forms$glm_fixed, data = df)
+  #attr(mod, "fit_stage")   <- "glm_fixed"
+  #attr(mod, "conv_msgs")   <- NA_character_
+  #attr(mod, "is_singular") <- NA
+  #mod
+}
+
+
+root = "/home/jules/Documents/RRET_JULES/Analyses/precompute/TF/session/df_R"
+outputdir_fig = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/diagnosis"
+outputdir_df_lmm = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/df"
+
+band_list <- c("theta", "beta", "gamma")
+phase_cycle_list <- c("inspi", "expi")
+cond_sel_OC <- c("oc_ctrl", "oc_chl")
+
+# Load the Excel data
+filename = paste0("/df_reg_ALLROI_ALLDATA_R.xlsx")
+df_raw <- read_excel(paste(root, filename, sep  = "/"))
+df_raw_oc <- subset(df_raw, cond == cond_sel_OC)
+
+ROI_list_raw <- unique(df_raw$ROI)
+ROI_list <- ROI_list_raw[!grepl("UNSORTED", ROI_list_raw)]
+
+rf_metrics <- unique(df_raw$rf_metric)
+
+phase_cycle_sel = phase_cycle_list[1]
+rf_metric_sel = rf_metrics[1]
+band_sel = band_list[1]
+ROI_sel = ROI_list[1]
+pre_post_sel = 'post'
+cond = 'oc_ctrl'
+
+for (cond_sel in cond_sel_OC) {
+  
+  df_raw_cond <- subset(df_raw, cond == cond_sel)
+
+  for (phase_cycle_sel in phase_cycle_list) {
+    
+    df_phase_cycle <- subset(df_raw_cond, phase_cycle == phase_cycle_sel)
+    
+    for (rf_metric_sel in rf_metrics) {
+      
+      df_rf_metric <- subset(df_phase_cycle, rf_metric == rf_metric_sel)
+      
       for (band_sel in band_list) {
         
         df_band <- subset(df_rf_metric, band == band_sel)
         
         for (ROI_sel in ROI_list) {
           
-          withCallingHandlers({
+          tryCatch({
             
-            print(ROI_sel)
+            update_iteration <- paste(cond_sel, band_sel, pre_post_sel, phase_cycle_sel, rf_metric_sel, ROI_sel, sep = "_")
+            print(update_iteration)
+            
+            filename_export_diagnostic <- paste(cond_sel, band_sel, pre_post_sel, phase_cycle_sel, rf_metric_sel, ROI_sel, sep = "_")
             
             df_oneROI <- subset(df_band, ROI == ROI_sel)
-      
-            print(df_oneROI %>% group_by(sujet) %>% summarise(n_chan = n_distinct(chan)))
             
-            df <- df_oneROI[c("sujet", "chan", "OLS_a", "resp", "state")]
+            df <- df_oneROI[, c("sujet", "rf_metric_val", "Pxx")]
             
-            # Convert categorical variables to factors
-            df$sujet <- as.factor(df$sujet)
-            df$chan <- as.factor(df$chan)
-            #df$cond <- as.factor(df$cond)
+            df$sujet <- factor(df$sujet)
+
+            # Optional: counts per subject (quick QA)
+            df_count <- df %>%
+              group_by(sujet) %>%
+              summarise()
             
-            # ---- Set baselines (reference levels) ----
-            df$resp  <- factor(df$resp)   # ensure factor
-            df$state <- factor(df$state)
+            print(df_count)
             
-            df$resp  <- relevel(df$resp,  ref = "rsp")   # baseline for resp
-            df$state <- relevel(df$state, ref = "ctrl")  # baseline for state
             
-            #### FIG 1
-            p <- ggplot(df, aes(x = sujet, y = OLS_a, color = sujet, fill = sujet)) +
+            # ---- MODEL
+            model <- fit_model_with_fallback(df)
+            
+            fit_stage <- attr(model, "fit_stage")
+            conv_msgs <- attr(model, "conv_msgs")
+            is_sing   <- attr(model, "is_singular")
+            
+            message("✅ Model fit stage: ", fit_stage,
+                    if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "",
+                    if (!is.na(conv_msgs)) paste0(" | conv=", conv_msgs) else "")
+            
+            # ---- stats for histogram subtitle
+            skew_chan <- round(skewness(df$rf_metric_val), 2)
+            kurt_chan <- round(kurtosis(df$rf_metric_val), 2)
+            
+            
+            
+            # ------------------------------------------------------------
+            # PREP: residuals + fitted for diagnostics
+            # ------------------------------------------------------------
+            diag_df <- data.frame(
+              fitted = as.numeric(fitted(model)),
+              resid  = as.numeric(resid(model))
+            )
+            
+            # Optional: Scale-Location values (sqrt(|standardized residuals|))
+            # For merMod models, use scaled residuals when available; otherwise fallback
+            std_res <- tryCatch({
+              as.numeric(resid(model, type = "pearson"))
+            }, error = function(e) {
+              # fallback: standardize manually
+              as.numeric(scale(diag_df$resid))
+            })
+            
+            diag_df$scale_loc <- sqrt(abs(std_res))
+            
+            
+            # ------------------------------------------------------------
+            # PLOT 1: subject-wise boxplot (ggplot)
+            # ------------------------------------------------------------
+            p_box <- ggplot(df, aes(x = sujet, y = Pxx, color = sujet, fill = sujet)) +
               geom_boxplot(width = .2, alpha = .5, outlier.alpha = 0,
                            position = position_dodge(.9)) +
               stat_summary(fun = median, geom = "point", size = 2,
-                           position = position_dodge(.9), color = "white")+
+                           position = position_dodge(.9), color = "white") +
               labs(
-                title    = paste(ROI_sel, band_sel, phase_cycle_sel, rf_metric_sel, pre_post_sel, "OLS_a", sep = "_")
+                title = paste(filename_export_diagnostic, "Pxx — Subject-wise", sep = " | ")
               ) +
               theme(
-                plot.title    = element_text(hjust = 0.5),
+                plot.title = element_text(hjust = 0.5),
+                legend.position = "none"
               )
             
-            p
-            
-            file_boxplot_subjectwise = paste(band_sel, rf_metric_sel, "boxplot", ROI_sel, phase_cycle_sel, pre_post_sel, "OLS_a_subjectwise.png", sep = "_")
-            # then explicitly:
-            ggsave(paste(outputdir_fig, file_boxplot_subjectwise, sep = "/"), plot = p, width = 8, height = 5)
-            
-            #### MODEL
-            #complex_form <- OLS_a ~ resp * state + (resp | sujet/chan)
-            #simple_form  <- OLS_a ~ resp * state + (1 | sujet/chan)
-            simple_form  <- OLS_a ~ resp * state + (1 | sujet)
-            simple_form_refit  <- OLS_a ~ resp * state
-            
-            model <- tryCatch({
-              
-              warn_triggered <- FALSE  # will catch if any warning is raised
-              
-              mod_attempt <- withCallingHandlers(
-                expr = {
-                  lmer(
-                    simple_form,
-                    data = df,
-                    control = lmerControl(optCtrl = list(maxfun = 2e5))
-                  )
-                },
-                warning = function(w) {
-                  message("⚠️ Warning during lmer(): ", conditionMessage(w))
-                  warn_triggered <<- TRUE
-                  invokeRestart("muffleWarning")  # suppress so execution continues
-                }
+            # ------------------------------------------------------------
+            # PLOT 2: histogram (ggplot)
+            # ------------------------------------------------------------
+            p_hist <- ggplot(df, aes(x = Pxx)) +
+              geom_histogram(bins = 30, fill = "lightblue", color = "white") +
+              labs(
+                title    = "Histogram",
+                subtitle = paste("kurtosis:", kurt_chan, "| skewness:", skew_chan),
+                x        = "Pxx values",
+                y        = "Count"
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5)
               )
-              
-              # Force fallback if warning was raised or model is singular
-              if (warn_triggered || isSingular(mod_attempt, tol = 1e-4)) {
-                message("⚠️️ Fallback to lm() due to warning or singular fit")
-                stop("Trigger fallback to lm")
-              }
-              
-              mod_attempt  # return valid model if all checks passed
-              
-            }, error = function(e) {
-              lm(simple_form_refit, data = df)
-            })
             
-            summary(model)
+            # ------------------------------------------------------------
+            # PLOT 3: QQ plot of residuals (ggplot)
+            # ------------------------------------------------------------
+            res_df <- data.frame(res = resid(model))
             
+            p_qq <- ggplot(res_df, aes(sample = res)) +
+              stat_qq() +
+              stat_qq_line() +
+              labs(
+                title = "QQ plot (residuals)",
+                subtitle = paste0("fit_stage=", fit_stage,
+                                  if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "")
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5)
+              )
             
-            #### FIG 2
-            filename_hist = paste(band_sel, rf_metric_sel, "histogram", ROI_sel, phase_cycle_sel, pre_post_sel, "OLS_a.png", sep = "_")
+            # ------------------------------------------------------------
+            # PLOT 4: Residuals vs Fitted (homoskedasticity check)
+            # Equivalent to: plot(fitted(m7), resid(m7))
+            # ------------------------------------------------------------
             
-            skew_chan = round(skewness(df$OLS_a), 2)
-            kurt_chan = round(kurtosis(df$OLS_a), 2)
-            
-            png(
-              filename = paste(outputdir_fig, filename_hist, sep = "/"),
-              width    = 800,    # width in pixels
-              height   = 600,    # height in pixels
-              res      = 100     # resolution (pixels per inch)
+            diag_df <- data.frame(
+              fitted = as.numeric(fitted(model)),
+              resid  = as.numeric(resid(model))
             )
             
-            hist(
-              df$OLS_a,
-              breaks = 30,
-              main   = "",          # leave main blank for now
-              xlab   = "OLS_a values",
-              ylab   = "Resp",
-              col    = "lightblue",
-              border = "white"
+            p_homo <- ggplot(diag_df, aes(x = fitted, y = resid)) +
+              geom_point(alpha = 0.35, size = 1) +
+              geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+              geom_smooth(method = "loess", se = FALSE, color = "black") +
+              labs(
+                title = "Residuals vs Fitted",
+                subtitle = "Homoskedasticity check (look for constant spread, no funnel)",
+                x = "Fitted values",
+                y = "Residuals"
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5)
+              )
+            
+            # ------------------------------------------------------------
+            # COMBINE into ONE figure (patchwork)
+            # Layout: boxplot on top, hist + qq below
+            # ------------------------------------------------------------
+            p_all <- (p_box + p_hist) / (p_qq + p_homo) +
+              plot_annotation(
+                title = paste("Diagnostics:", filename_export_diagnostic),
+                theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+              )
+            
+            print(p_all)
+            
+            # ------------------------------------------------------------
+            # SAVE one single PNG
+            # ------------------------------------------------------------
+            file_diag <- paste("OC_UNIQUECOND_DIAGNOSTIC", filename_export_diagnostic, "rf_metric_val.png", sep = "_")
+            
+            ggsave(
+              filename = paste(outputdir_fig, file_diag, sep = "/"),
+              plot     = p_all,
+              width    = 12,
+              height   = 8,
+              dpi      = 150
             )
             
-            title(
-              main     = paste(band_sel, rf_metric_sel, ROI_sel, phase_cycle_sel, pre_post_sel, "OLS_a", "kurtosis:", kurt_chan, "skewness", skew_chan),
-              adj      = 0.5,       # 0.5 = center
-              cex.main = 1.5,       # main title size
-              font.main= 2,         # bold
-              cex.sub  = 1.0        # subtitle size
-            )
             
-            dev.off()
+            # ------------------------------------------------------------
+            # EXPORT MODEL RESULTS
+            # - tab_model for HTML-like report
+            # - broom.mixed fixed effects + add fit diagnostics
+            # ------------------------------------------------------------
             
-            #### FIG 3
-            filename_qqplot = paste(band_sel, rf_metric_sel, "qqplot", ROI_sel, phase_cycle_sel, pre_post_sel, "OLS_a.png", sep = "_")
-            
-            png(
-              filename = paste(outputdir_fig, filename_qqplot, sep = "/"),
-              width    = 800,    # width in pixels
-              height   = 600,    # height in pixels
-              res      = 100     # resolution (pixels per inch)
-            )
-            
-            qqnorm(resid(model))
-            qqline(resid(model))  # points fall nicely onto the line - good!
-            
-            title(
-              sub     = paste(band, rf_metric, ROI_sel, "qqplot"),
-              adj      = 0.5,       # 0.5 = center
-              cex.main = 1.5,       # main title size
-              font.main= 2,         # bold
-              cex.sub  = 1.0        # subtitle size
-            )
-            
-            dev.off()
-            
-            #### EXPORT MODEL RES
             tab_model(model, show.re.var = TRUE, show.icc = TRUE, show.r2 = TRUE, show.se = TRUE)
             
-            model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE)
+            model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+              mutate(
+                fit_stage   = fit_stage,
+                singular    = if (!is.na(is_sing)) is_sing else NA,
+                conv_msgs   = if (!is.na(conv_msgs)) conv_msgs else NA,
+                band        = band_sel,
+                phase_cycle = phase_cycle_sel,
+                rf_metric   = rf_metric_sel,
+                ROI         = ROI_sel,
+                cond         = cond_sel
+              )
             
-            filesxlsx_ROI = paste(band_sel, rf_metric_sel, "OLS_a_lmm", ROI_sel, phase_cycle_sel, pre_post_sel, "res.xlsx", sep = "_")
+            filesxlsx_ROI <- paste("OC_UNIQUECOND_RES", filename_export_diagnostic, "LMM.xlsx", sep = "_")
             writexl::write_xlsx(model_df, paste(outputdir_df_lmm, filesxlsx_ROI, sep = "/"))
             
-          }, warning = function(w) {
-            message("Warning: ", conditionMessage(w))  # shows immediately
-            invokeRestart("muffleWarning")
+          }, error = function(e) {
+            message("❌ Error for ", band, " / ", phase_cycle_sel, " / ", ROI_sel, " : ", conditionMessage(e))
           })
-          
-          
         }
-        
-      }
-    
+      }  
     }
-    
   }
-
 }
 
 
+
+
+
+################################
+#### REG_PRE_POST ####
+################################
+
+
+fit_model_with_fallback <- function(df, tol_sing = 1e-4, maxfun = 2e5) {
+  
+  forms <- list(
+    lmer_sujet_rdmslope = post_oc_ratio ~ pre_total_amplitude + (pre_total_amplitude | sujet),                
+    lmer_sujet  = post_oc_ratio ~ pre_total_amplitude + (1 | sujet),                     
+    lm_fixed    = post_oc_ratio ~ pre_total_amplitude                                  
+  )
+  
+  #forms <- list(
+  #  glmer_sujet_rdmslope = Pxx ~ rf_metric_val + (rf_metric_val | sujet),                
+  #  glmer_sujet  = Pxx ~ rf_metric_val + (1 | sujet),                     
+  #  glm_fixed    = Pxx ~ rf_metric_val                                    
+  #)
+  
+  ctrl <- lmerControl(
+    optimizer   = "bobyqa",
+    optCtrl     = list(maxfun = maxfun),
+    calc.derivs = FALSE
+  )
+  
+  #ctrl <- glmerControl(
+  #  optimizer   = "bobyqa",
+  #  optCtrl     = list(maxfun = maxfun),
+  #  calc.derivs = FALSE
+  #)
+  
+  bad_fit <- function(mod) {
+    # singular OR lme4 convergence messages (often in optinfo)
+    isSingular(mod, tol = tol_sing) ||
+      !is.null(mod@optinfo$conv$lme4$messages) ||
+      !is.null(mod@optinfo$conv$messages)
+  }
+  
+  get_conv_msgs <- function(mod) {
+    msgs <- c()
+    if (!is.null(mod@optinfo$conv$lme4$messages)) msgs <- c(msgs, mod@optinfo$conv$lme4$messages)
+    if (!is.null(mod@optinfo$conv$messages))      msgs <- c(msgs, mod@optinfo$conv$messages)
+    if (length(msgs) == 0) return(NA_character_)
+    paste(unique(msgs), collapse = " | ")
+  }
+  
+  for (nm in names(forms)) {
+    f <- forms[[nm]]
+    
+    if (nm == "lm_fixed") {
+      mod <- lm(f, data = df)
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- NA_character_
+      attr(mod, "is_singular") <- NA
+      return(mod)
+    }
+    
+    #if (nm == "glm_fixed") {
+    #  mod <- glm(f, data = df)
+    #  attr(mod, "fit_stage")   <- nm
+    #  attr(mod, "conv_msgs")   <- NA_character_
+    #  attr(mod, "is_singular") <- NA
+    #  return(mod)
+    #}
+    
+    mod <- suppressWarnings(
+      suppressMessages(
+        try(lmer(f, data = df, control = ctrl), silent = TRUE)
+        #try(glmer(f, data = df, control = ctrl, family = Gamma(link = "log")), silent = TRUE)
+      )
+    )
+    
+    if (inherits(mod, "try-error")) next
+    
+    if (!bad_fit(mod)) {
+      attr(mod, "fit_stage")   <- nm
+      attr(mod, "conv_msgs")   <- get_conv_msgs(mod)
+      attr(mod, "is_singular") <- isSingular(mod, tol = tol_sing)
+      return(mod)
+    }
+  }
+  
+  # absolute last-resort safeguard
+  mod <- lm(forms$lm_fixed, data = df)
+  attr(mod, "fit_stage")   <- "lm_fixed"
+  attr(mod, "conv_msgs")   <- NA_character_
+  attr(mod, "is_singular") <- NA
+  mod
+  
+  #mod <- glm(forms$glm_fixed, data = df)
+  #attr(mod, "fit_stage")   <- "glm_fixed"
+  #attr(mod, "conv_msgs")   <- NA_character_
+  #attr(mod, "is_singular") <- NA
+  #mod
+}
+
+
+root = "/home/jules/Documents/RRET_JULES/Analyses/precompute/RESP/df_R"
+outputdir_fig = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/RESP/diagnosis"
+outputdir_df_lmm = "/home/jules/Documents/RRET_JULES/Analyses/results/LMM/RESP/df"
+
+phase_cycle_list <- c("inspi", "expi")
+cond_sel_OC <- c("oc_ctrl", "oc_chl")
+
+# Load the Excel data
+filename = paste0("/df_R_RFonly_selOC.xlsx")
+df_raw <- read_excel(paste(root, filename, sep  = "/"))
+
+cond_sel = 'oc_ctrl'
+
+for (cond_sel in cond_sel_OC) {
+  
+  df_cond <- subset(df_raw, cond == cond_sel)
+          
+  tryCatch({
+    
+    update_iteration <- paste(cond_sel, sep = "_")
+    print(update_iteration)
+    
+    filename_export_diagnostic <- paste(cond_sel, sep = "_")
+    
+    df <- df_cond[, c("sujet", "pre_total_amplitude", "post_oc_ratio")]
+    
+    df$sujet <- factor(df$sujet)
+    
+    # ---- MODEL
+    model <- fit_model_with_fallback(df)
+    
+    fit_stage <- attr(model, "fit_stage")
+    conv_msgs <- attr(model, "conv_msgs")
+    is_sing   <- attr(model, "is_singular")
+    
+    message("✅ Model fit stage: ", fit_stage,
+            if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "",
+            if (!is.na(conv_msgs)) paste0(" | conv=", conv_msgs) else "")
+    
+    # ---- stats for histogram subtitle
+    skew_chan <- round(skewness(df$post_oc_ratio), 2)
+    kurt_chan <- round(kurtosis(df$post_oc_ratio), 2)
+    
+    # ------------------------------------------------------------
+    # PREP: residuals + fitted for diagnostics
+    # ------------------------------------------------------------
+    diag_df <- data.frame(
+      fitted = as.numeric(fitted(model)),
+      resid  = as.numeric(resid(model))
+    )
+    
+    # Optional: Scale-Location values (sqrt(|standardized residuals|))
+    # For merMod models, use scaled residuals when available; otherwise fallback
+    std_res <- tryCatch({
+      as.numeric(resid(model, type = "pearson"))
+    }, error = function(e) {
+      # fallback: standardize manually
+      as.numeric(scale(diag_df$resid))
+    })
+    
+    diag_df$scale_loc <- sqrt(abs(std_res))
+    
+    
+    # ------------------------------------------------------------
+    # PLOT 1: subject-wise boxplot (ggplot)
+    # ------------------------------------------------------------
+    p_box <- ggplot(df, aes(x = sujet, y = post_oc_ratio, color = sujet, fill = sujet)) +
+      geom_boxplot(width = .2, alpha = .5, outlier.alpha = 0,
+                   position = position_dodge(.9)) +
+      stat_summary(fun = median, geom = "point", size = 2,
+                   position = position_dodge(.9), color = "white") +
+      labs(
+        title = paste(filename_export_diagnostic, "post_oc_ratio — Subject-wise", sep = " | ")
+      ) +
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "none"
+      )
+    
+    # ------------------------------------------------------------
+    # PLOT 2: histogram (ggplot)
+    # ------------------------------------------------------------
+    p_hist <- ggplot(df, aes(x = post_oc_ratio)) +
+      geom_histogram(bins = 30, fill = "lightblue", color = "white") +
+      labs(
+        title    = "Histogram",
+        subtitle = paste("kurtosis:", kurt_chan, "| skewness:", skew_chan),
+        x        = "post_oc_ratio values",
+        y        = "Count"
+      ) +
+      theme(
+        plot.title = element_text(hjust = 0.5)
+      )
+    
+    # ------------------------------------------------------------
+    # PLOT 3: QQ plot of residuals (ggplot)
+    # ------------------------------------------------------------
+    res_df <- data.frame(res = resid(model))
+    
+    p_qq <- ggplot(res_df, aes(sample = res)) +
+      stat_qq() +
+      stat_qq_line() +
+      labs(
+        title = "QQ plot (residuals)",
+        subtitle = paste0("fit_stage=", fit_stage,
+                          if (!is.na(is_sing)) paste0(" | singular=", is_sing) else "")
+      ) +
+      theme(
+        plot.title = element_text(hjust = 0.5)
+      )
+    
+    # ------------------------------------------------------------
+    # PLOT 4: Residuals vs Fitted (homoskedasticity check)
+    # Equivalent to: plot(fitted(m7), resid(m7))
+    # ------------------------------------------------------------
+    
+    diag_df <- data.frame(
+      fitted = as.numeric(fitted(model)),
+      resid  = as.numeric(resid(model))
+    )
+    
+    p_homo <- ggplot(diag_df, aes(x = fitted, y = resid)) +
+      geom_point(alpha = 0.35, size = 1) +
+      geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+      geom_smooth(method = "loess", se = FALSE, color = "black") +
+      labs(
+        title = "Residuals vs Fitted",
+        subtitle = "Homoskedasticity check (look for constant spread, no funnel)",
+        x = "Fitted values",
+        y = "Residuals"
+      ) +
+      theme(
+        plot.title = element_text(hjust = 0.5)
+      )
+    
+    # ------------------------------------------------------------
+    # COMBINE into ONE figure (patchwork)
+    # Layout: boxplot on top, hist + qq below
+    # ------------------------------------------------------------
+    p_all <- (p_box + p_hist) / (p_qq + p_homo) +
+      plot_annotation(
+        title = paste("Diagnostics:", filename_export_diagnostic),
+        theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+      )
+    
+    print(p_all)
+    
+    # ------------------------------------------------------------
+    # SAVE one single PNG
+    # ------------------------------------------------------------
+    file_diag <- paste("OC_PRE_DIAGNOSTIC", filename_export_diagnostic, "post_oc_ratio.png", sep = "_")
+    
+    ggsave(
+      filename = paste(outputdir_fig, file_diag, sep = "/"),
+      plot     = p_all,
+      width    = 12,
+      height   = 8,
+      dpi      = 150
+    )
+    
+    
+    # ------------------------------------------------------------
+    # EXPORT MODEL RESULTS
+    # - tab_model for HTML-like report
+    # - broom.mixed fixed effects + add fit diagnostics
+    # ------------------------------------------------------------
+    
+    tab_model(model, show.re.var = TRUE, show.icc = TRUE, show.r2 = TRUE, show.se = TRUE)
+    
+    model_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+      mutate(
+        fit_stage   = fit_stage,
+        singular    = if (!is.na(is_sing)) is_sing else NA,
+        conv_msgs   = if (!is.na(conv_msgs)) conv_msgs else NA,
+        cond         = cond_sel
+      )
+    
+    filesxlsx_ROI <- paste("OC_PRE_RES", filename_export_diagnostic, "post_oc_ratio_LMM.xlsx", sep = "_")
+    writexl::write_xlsx(model_df, paste(outputdir_df_lmm, filesxlsx_ROI, sep = "/"))
+    
+  }, error = function(e) {
+    message("❌ Error for ", band, " / ", phase_cycle_sel, " / ", ROI_sel, " : ", conditionMessage(e))
+  })
+}
 
 
 
