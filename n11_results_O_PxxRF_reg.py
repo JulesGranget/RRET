@@ -64,23 +64,22 @@ def export_res_OLSa_reg_allcond():
     os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_reg'))
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     df_reg = pd.read_excel(f"df_reg_ALLROI.xlsx")
     
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_reg['ROI'] = df_reg['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -225,23 +224,22 @@ def export_reg_CTRL_example():
     sujet_thresh = 3
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         _ncontact = df_loca_allsujet.query(f"loca == '{ROI}'").groupby("sujet").count()['chan'].sum()        
 
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet}) c({_ncontact})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_reg_allROI_alldata_R['ROI'] = df_reg_allROI_alldata_R['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -294,7 +292,6 @@ def export_res_LMM_reg_CTRL():
     folder_import_dir = os.path.join(path_results, 'LMM', 'df')
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     df_LMM_CTRL = []
 
@@ -304,7 +301,7 @@ def export_res_LMM_reg_CTRL():
             
             for band in band_list_short:
             
-                for ROI in ROI_list:
+                for ROI in ROI_short_list:
     
                     _filename = os.path.join(folder_import_dir, f"CTRL_RES_{band}_post_{phase_cycle_sel}_{rf_metric_sel}_{ROI}_LMM.xlsx")
                     df_LMM_CTRL.append(pd.read_excel(_filename))
@@ -313,19 +310,19 @@ def export_res_LMM_reg_CTRL():
     
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         _ncontact = df_loca_allsujet.query(f"loca == '{ROI}'").groupby("sujet").count()['chan'].sum()        
 
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet}) c({_ncontact})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_LMM_CTRL['ROI'] = df_LMM_CTRL['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -476,23 +473,22 @@ def export_reg_OC_example():
     sujet_thresh = 3
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         _ncontact = df_loca_allsujet.query(f"loca == '{ROI}'").groupby("sujet").count()['chan'].sum()        
 
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet}) c({_ncontact})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_reg_allROI_alldata_R['ROI'] = df_reg_allROI_alldata_R['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -536,6 +532,10 @@ def export_reg_OC_example():
 
 
 
+
+
+
+
 def export_res_LMM_reg_OC_ALLCOND():
 
     #### generate df
@@ -552,7 +552,6 @@ def export_res_LMM_reg_OC_ALLCOND():
     folder_import_dir = os.path.join(path_results, 'LMM', 'df')
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     df_LMM_OC = []
 
@@ -562,7 +561,7 @@ def export_res_LMM_reg_OC_ALLCOND():
             
             for band in band_list_short:
             
-                for ROI in ROI_list:
+                for ROI in ROI_short_list:
     
                     _filename = os.path.join(folder_import_dir, f"OC_ALLCOND_RES_{band}_post_{phase_cycle_sel}_{rf_metric_sel}_{ROI}_LMM.xlsx")
                     df_LMM_OC.append(pd.read_excel(_filename))
@@ -571,19 +570,19 @@ def export_res_LMM_reg_OC_ALLCOND():
     
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         _ncontact = df_loca_allsujet.query(f"loca == '{ROI}'").groupby("sujet").count()['chan'].sum()        
 
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet}) c({_ncontact})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_LMM_OC['ROI'] = df_LMM_OC['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -604,6 +603,8 @@ def export_res_LMM_reg_OC_ALLCOND():
         "expi":  "#d62728" 
     }
 
+    ROI_order = ['Amygdala s(8) c(31)', 'Hippocampus s(7) c(57)', 'insula-ant s(5) c(21)', 'insula-pos s(4) c(18)', 
+                 'lateralorbitofrontal s(5) c(21)', 'medialorbitofrontal s(5) c(7)', 'postcentral s(3) c(17)', 'precentral s(4) c(12)']
 
     for band in band_list_short:
 
@@ -618,76 +619,50 @@ def export_res_LMM_reg_OC_ALLCOND():
 
         for col_i, rf_metric in enumerate(rf_metric_short_list, start=1):
 
+            y_max = df_plot.query("rf_metric == @rf_metric and term != '(Intercept)'")["estimate"].abs().max()
+
             for row_i, estimate in enumerate(estimate_list, start=1):
 
                 df_sub = df_plot.query("rf_metric == @rf_metric and term == @estimate")
-
-                # stable ROI order
-                rois = list(df_sub["ROI"].dropna().unique())
-                x_base = np.arange(len(rois))
-
-                # group geometry (2 hue levels = inspi/expi)
-                n_phase = len(phase_cycle_list)
-                group_width = 0.8
-                bar_w = group_width / n_phase
-                offsets = (np.arange(n_phase) - (n_phase - 1) / 2) * bar_w
-
-                # y offset for stars (per subplot)
-                y_max = df_sub["estimate"].abs().max()
-                y_off = (y_max * 0.05) if (y_max and np.isfinite(y_max)) else 0.05
-
+                
                 for j, phase_cycle in enumerate(phase_cycle_list):
 
-                    df_c = df_sub.query("phase_cycle == @phase_cycle").set_index('ROI')
+                    df_c = df_sub.query("phase_cycle == @phase_cycle")
 
-                    y = np.array([df_c["estimate"].get(roi, np.nan) for roi in rois], dtype=float)
-                    p = np.array([df_c["p.value"].get(roi, np.nan) for roi in rois], dtype=float)
-                    signi = (p < val_signi)
+                    signi_text = [p_to_stars(_p) for _p in df_c['p.value']]
 
-                    x = x_base + offsets[j]
-
-                    # Bars (no outline)
-                    fig.add_trace(
-                        go.Bar(
-                            x=x,
-                            y=y,
-                            width=bar_w * 0.95,
-                            name=phase_cycle,
-                            marker={'line':dict(width=0), 'color':color_map[phase_cycle]},
-                            showlegend=(col_i == 1)
-                        ),
+                    fig.add_bar(
+                        x=df_c['ROI'],
+                        y=df_c['estimate'],
+                        name=phase_cycle,
+                        text=signi_text,
+                        textposition="outside",
+                        marker_color=color_map[phase_cycle],
                         row=row_i,
                         col=col_i
                     )
 
-                    # Stars aligned to the correct hue bar
-                    mask = signi & np.isfinite(y)
-                    if mask.any():
-                        y_star = np.where(y[mask] >= 0, y[mask] + y_off, y[mask] - y_off)
+                    margin = y_max * 0.50   # 15% extra space
 
-                        fig.add_trace(
-                            go.Scatter(
-                                x=x[mask],
-                                y=y_star,
-                                mode="text",
-                                text=["★"] * int(mask.sum()),
-                                textposition="middle center",
-                                textfont=dict(size=16),
-                                showlegend=False
-                            ),
-                            row=row_i,
-                            col=col_i
-                        )
+                    fig.update_yaxes(
+                        range=[-y_max - margin, y_max + margin],
+                        row=row_i,
+                        col=col_i
+                    )
 
-                # zero reference line
-                fig.add_hline(y=0, line_dash="dash", line_color="red", row=row_i, col=col_i)
+                    fig.update_xaxes(
+                        categoryorder="array",
+                        categoryarray=ROI_order,
+                        row=row_i,
+                        col=col_i
+                    )
 
                 # ROI tick labels centered on ROI groups (x_base)
                 if row_i == 3:
                     fig.update_xaxes(
                         tickmode="array",
-                        tickvals=x_base,
-                        ticktext=rois,
+                        # tickvals=x,
+                        ticktext=ROI_order,
                         tickangle=45,
                         row=row_i,
                         col=col_i
@@ -700,16 +675,8 @@ def export_res_LMM_reg_OC_ALLCOND():
                         col=col_i
                     )
 
-                margin = y_max * 0.50   # 15% extra space
-
-                fig.update_yaxes(
-                    range=[-y_max - margin, y_max + margin],
-                    row=row_i,
-                    col=col_i
-                )
-
         fig.update_layout(
-            barmode="overlay",  # we manually position bars on x, so overlay is correct
+            barmode="group",  # we manually position bars on x, so overlay is correct
             template="simple_white",
             height=320 * len(estimate_list),
             width=420 * len(rf_metric_short_list),
@@ -721,6 +688,15 @@ def export_res_LMM_reg_OC_ALLCOND():
 
         filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'oc', f"ALLCOND_REG_RF_{band}_{phase_protocol}.html")
         fig.write_html(filepath)
+
+    #### export df values
+    df_export = df_LMM_OC_short.query(f"ROI in {ROI_plot_short_list} and term != '(Intercept)' and rf_metric == 'oc_ratio'")
+    
+    filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'oc')
+    filename = os.path.join(filepath, "ALLCOND_df_REG_oc_ratio.xlsx")
+    df_export.to_excel(filename)
+
+
 
 
 
@@ -742,7 +718,6 @@ def export_res_LMM_reg_OC_UNIQUECOND():
     folder_import_dir = os.path.join(path_results, 'LMM', 'df')
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     df_LMM_OC = []
 
@@ -754,7 +729,7 @@ def export_res_LMM_reg_OC_UNIQUECOND():
                 
                 for band in band_list_short:
                 
-                    for ROI in ROI_list:
+                    for ROI in ROI_short_list:
         
                         _filename = os.path.join(folder_import_dir, f"OC_UNIQUECOND_RES_{cond}_{band}_post_{phase_cycle_sel}_{rf_metric_sel}_{ROI}_LMM.xlsx")
                         df_LMM_OC.append(pd.read_excel(_filename))
@@ -763,19 +738,19 @@ def export_res_LMM_reg_OC_UNIQUECOND():
 
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         _ncontact = df_loca_allsujet.query(f"loca == '{ROI}'").groupby("sujet").count()['chan'].sum()        
 
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet}) c({_ncontact})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_LMM_OC['ROI'] = df_LMM_OC['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -795,6 +770,9 @@ def export_res_LMM_reg_OC_UNIQUECOND():
         "expi":  "#d62728" 
     }
 
+    ROI_order = ['Amygdala s(8) c(31)', 'Hippocampus s(7) c(57)', 'insula-ant s(5) c(21)', 'insula-pos s(4) c(18)', 
+                 'lateralorbitofrontal s(5) c(21)', 'medialorbitofrontal s(5) c(7)', 'postcentral s(3) c(17)', 'precentral s(4) c(12)']
+
     for band in band_list_short:
 
         df_plot = df_LMM_OC_short.query("band == @band")
@@ -808,99 +786,67 @@ def export_res_LMM_reg_OC_UNIQUECOND():
 
         for col_i, rf_metric in enumerate(rf_metric_short_list, start=1):
 
+            y_max = df_plot.query("rf_metric == @rf_metric and term != '(Intercept)'")["estimate"].abs().max()
+
             for row_i, cond in enumerate(cond_list_oc, start=1):
                 
                 df_sub = df_plot.query("rf_metric == @rf_metric and cond == @cond and term == 'rf_metric_val'")
 
-                # stable ROI order
-                rois = list(df_sub["ROI"].dropna().unique())
-                x_base = np.arange(len(rois))
-
-                # group geometry (2 hue levels = inspi/expi)
-                n_phase = len(phase_cycle_list)
-                group_width = 0.8
-                bar_w = group_width / n_phase
-                offsets = (np.arange(n_phase) - (n_phase - 1) / 2) * bar_w
-
-                # y offset for stars (per subplot)
-                y_max = df_sub["estimate"].abs().max()
-                y_off = (y_max * 0.05) if (y_max and np.isfinite(y_max)) else 0.05
-
                 for j, phase_cycle in enumerate(phase_cycle_list):
 
-                    df_c = df_sub.query("phase_cycle == @phase_cycle").set_index('ROI')
+                    df_c = df_sub.query("phase_cycle == @phase_cycle")
 
-                    y = np.array([df_c["estimate"].get(roi, np.nan) for roi in rois], dtype=float)
-                    p = np.array([df_c["p.value"].get(roi, np.nan) for roi in rois], dtype=float)
-                    signi = (p < val_signi)
+                    signi_text = [p_to_stars(_p) for _p in df_c['p.value']]
 
-                    x = x_base + offsets[j]
-
-                    # Bars (no outline)
-                    fig.add_trace(
-                        go.Bar(
-                            x=x,
-                            y=y,
-                            width=bar_w * 0.95,
-                            name=phase_cycle,
-                            marker={'line':dict(width=0), 'color':color_map[phase_cycle]},
-                            showlegend=(col_i == 1)
-                        ),
+                    fig.add_bar(
+                        x=df_c['ROI'],
+                        y=df_c['estimate'],
+                        name=phase_cycle,
+                        text=signi_text,
+                        textposition="outside",
+                        marker_color=color_map[phase_cycle],
                         row=row_i,
                         col=col_i
                     )
 
-                    # Stars aligned to the correct hue bar
-                    mask = signi & np.isfinite(y)
-                    if mask.any():
-                        y_star = np.where(y[mask] >= 0, y[mask] + y_off, y[mask] - y_off)
+                    margin = y_max * 0.50   # 15% extra space
 
-                        fig.add_trace(
-                            go.Scatter(
-                                x=x[mask],
-                                y=y_star,
-                                mode="text",
-                                text=["★"] * int(mask.sum()),
-                                textposition="middle center",
-                                textfont=dict(size=16),
-                                showlegend=False
-                            ),
-                            row=row_i,
-                            col=col_i
-                        )
+                    fig.update_yaxes(
+                        range=[-y_max - margin, y_max + margin],
+                        row=row_i,
+                        col=col_i
+                    )
+
+                    fig.update_xaxes(
+                        categoryorder="array",
+                        categoryarray=ROI_order,
+                        row=row_i,
+                        col=col_i
+                    )
 
                 # zero reference line
-                fig.add_hline(y=0, line_dash="dash", line_color="red", row=row_i, col=col_i)
+                # fig.add_hline(y=0, line_dash="dash", line_color="red", row=row_i, col=col_i)
 
-                # if row_i == 2:
-                fig.update_xaxes(
-                    tickmode="array",
-                    tickvals=x_base,
-                    ticktext=rois,
-                    tickangle=45,
-                    row=row_i,
-                    col=col_i
-                )
+                # if col_i == 1:  
+                #     fig.update_yaxes(
+                #         title_text=cond,
+                #         row=row_i,
+                #         col=col_i
+                #     )
 
-                if col_i == 1:  
-                    fig.update_yaxes(
-                        title_text=cond,
-                        row=row_i,
-                        col=col_i
-                    )
+                # margin = y_max * 0.50   # 15% extra space
 
-                margin = y_max * 0.50   # 15% extra space
-
-                fig.update_yaxes(
-                    range=[-y_max - margin, y_max + margin],
-                    row=row_i,
-                    col=col_i
-                )
+                # fig.update_yaxes(
+                #     range=[-y_max - margin, y_max + margin],
+                #     row=row_i,
+                #     col=col_i
+                # )
 
 
         fig.update_layout(
-            barmode="overlay",  # we manually position bars on x, so overlay is correct
+            barmode="group",  # we manually position bars on x, so overlay is correct
             template="simple_white",
+            xaxis_tickangle=-45,
             height=420 * len(cond_list_oc),
             width=420 * len(rf_metric_short_list),
             title=f"{phase_protocol} {band}",
@@ -909,9 +855,15 @@ def export_res_LMM_reg_OC_UNIQUECOND():
 
         # fig.show()
 
-
         filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'oc', f"UNIQUECOND_REG_RF_{band}_{phase_protocol}.html")
         fig.write_html(filepath)
+
+    #### export df values
+    df_export = df_LMM_OC_short.query(f"ROI in {ROI_plot_short_list} and term != '(Intercept)' and rf_metric == 'oc_ratio'")
+    
+    filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'oc')
+    filename = os.path.join(filepath, "UNIQUECOND_df_REG_oc_ratio.xlsx")
+    df_export.to_excel(filename)
 
 
 
@@ -931,6 +883,8 @@ if __name__ == '__main__':
 
     export_res_LMM_reg_OC_ALLCOND()
     export_res_LMM_reg_OC_UNIQUECOND()
+
+    export_reg_OC_example()
 
 
 

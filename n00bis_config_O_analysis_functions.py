@@ -221,15 +221,15 @@ def generate_folder_structure(sujet):
 
 def get_chanlist(sujet):
 
-    path_source = os.getcwd()
-    
-    os.chdir(os.path.join(path_precompute, 'chanlist'))
-    
-    chan_list = np.load(f"{sujet}_chanlist.npy")
-    loca_list = np.load(f"{sujet}_localist.npy")
+    filepath_remove = os.path.join(path_results, 'anatomy', 'df_loca_allsujet_removetag.xlsx')
+    df_allsujet_removetag = pd.read_excel(filepath_remove)
+    sel_vec = (df_allsujet_removetag[['SOZ', 'Spike', 'Out', 'BAD']].values.sum(axis=1) == 0) * 1 
+    df_allsujet_removetag['Select'] = sel_vec
 
-    #### go back to path source
-    os.chdir(path_source)
+    df_sujet = df_allsujet_removetag.query(f"sujet == '{sujet}'")
+    mask_sel = np.where(df_sujet['Select'] == 1)[0]
+
+    chan_list, loca_list = df_sujet['chan'].values[mask_sel], df_sujet['loca'].values[mask_sel]
 
     return chan_list, loca_list
 
@@ -337,8 +337,9 @@ def modify_loca_name(loca_list):
 
 def get_coords(sujet):
     
-    chanlist, localist = get_chanlist(sujet)
-    localist = modify_loca_name(localist)
+    df_allsujet_removetag = get_df_loca_allsujet_raw()
+
+    chanlist, localist = df_allsujet_removetag['chan'], df_allsujet_removetag['loca']
 
     os.chdir(os.path.join(path_data, 'anatomy'))
     lepto_coord = pd.read_csv(f"{sujet}.LEPTO")
@@ -361,34 +362,30 @@ def get_coords(sujet):
     coords_to_add = np.array(coords_to_add)
     in_chanlist_presence_vec = np.array(in_chanlist_presence_vec)
         
-    df_coords = pd.DataFrame({'chan' : chanlist, 'loca' : localist[:,0], 'coords_x' : coords_to_add[:,0], 'coords_y' : coords_to_add[:,1], 'coords_z' : coords_to_add[:,2], 'coords_info_present' : in_chanlist_presence_vec})
+    df_coords = pd.DataFrame({'chan' : chanlist, 'loca' : localist, 'coords_x' : coords_to_add[:,0], 'coords_y' : coords_to_add[:,1], 'coords_z' : coords_to_add[:,2], 'coords_info_present' : in_chanlist_presence_vec,
+                              'Select' : df_allsujet_removetag['Select']})
 
     return df_coords
 
 
 
+def get_df_loca_allsujet_raw():
+    
+    filepath_remove = os.path.join(path_results, 'anatomy', 'df_loca_allsujet_removetag.xlsx')
+    df_loca_allsujet_raw = pd.read_excel(filepath_remove)
+    sel_vec = (df_loca_allsujet_raw[['SOZ', 'Spike', 'Out', 'BAD']].values.sum(axis=1) == 0) * 1 
+    df_loca_allsujet_raw['Select'] = sel_vec
+
+    return df_loca_allsujet_raw
+
+
 
 
 def get_df_loca_allsujet():
-
-    path_source = os.getcwd()
     
-    os.chdir(os.path.join(path_precompute, 'chanlist'))
-    
-    df_loca_allsujet = []
+    df_allsujet_removetag = get_df_loca_allsujet_raw()
 
-    for sujet in sujet_list:
-
-        _df_coords_sujet = get_coords(sujet)
-        _df_coords_sujet = pd.concat([pd.DataFrame({'sujet' : [sujet]*_df_coords_sujet.shape[0]}), _df_coords_sujet], axis=1)
-        df_loca_allsujet.append(_df_coords_sujet)
-
-    df_loca_allsujet = pd.concat(df_loca_allsujet)
-
-    #### go back to path source
-    os.chdir(path_source)
-
-    return df_loca_allsujet
+    return df_allsujet_removetag.query(f"Select == 1")
 
 
 

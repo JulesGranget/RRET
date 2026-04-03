@@ -840,8 +840,7 @@ def tf_relative_allpatient():
         for _sujet_i, _sujet in enumerate(_patient_list_unique):
 
             _sujet_chanlist, _sujet_localist = get_chanlist(_sujet)
-            _sujet_localist = modify_loca_name(_sujet_localist)
-            _sujet_chan_sel_vec = _sujet_localist[:,0] == loca_sel
+            _sujet_chan_sel_vec = _sujet_localist == loca_sel
 
             _tf_baseline = np.median(np.load(f'{_sujet}_{baseline_cond}_tf_allchan_stretch_post.npy')[_sujet_chan_sel_vec], axis=1)
                             
@@ -856,7 +855,7 @@ def tf_relative_allpatient():
         #### plot
         _vlim = np.abs([np.percentile(np.stack(_tf_allsujet_median, axis=0), percentile_plot[0]), np.percentile(np.stack(_tf_allsujet_median, axis=0), percentile_plot[1])]).max()
 
-        fig, axs = plt.subplots(ncols=len(test_conditions), figsize=(16,8))
+        fig, axs = plt.subplots(ncols=len(test_conditions), figsize=(16,5))
         
         for cond_i, cond in enumerate(test_conditions):
         

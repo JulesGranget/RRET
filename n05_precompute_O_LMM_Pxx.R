@@ -208,17 +208,40 @@ for (band in band_list) {
           )
         
         # ------------------------------------------------------------
+        # PLOT 4: Residuals vs Fitted (homoskedasticity check)
+        # Equivalent to: plot(fitted(m7), resid(m7))
+        # ------------------------------------------------------------
+        
+        diag_df <- data.frame(
+          fitted = as.numeric(fitted(model)),
+          resid  = as.numeric(resid(model))
+        )
+        
+        p_homo <- ggplot(diag_df, aes(x = fitted, y = resid)) +
+          geom_point(alpha = 0.35, size = 1) +
+          geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+          geom_smooth(method = "loess", se = FALSE, color = "black") +
+          labs(
+            title = "Residuals vs Fitted",
+            subtitle = "Homoskedasticity check (look for constant spread, no funnel)",
+            x = "Fitted values",
+            y = "Residuals"
+          ) +
+          theme(
+            plot.title = element_text(hjust = 0.5)
+          )
+        
+        # ------------------------------------------------------------
         # COMBINE into ONE figure (patchwork)
         # Layout: boxplot on top, hist + qq below
         # ------------------------------------------------------------
-        p_all <- p_box / (p_hist + p_qq) +
+        p_all <- (p_box + p_hist) / (p_qq + p_homo) +
           plot_annotation(
             title = paste("Diagnostics:", filename_export_diagnostic),
             theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
           )
         
         print(p_all)
-        
         # ------------------------------------------------------------
         # SAVE one single PNG
         # ------------------------------------------------------------
@@ -474,10 +497,34 @@ for (pre_post_sel in pre_post_list) {
               )
             
             # ------------------------------------------------------------
+            # PLOT 4: Residuals vs Fitted (homoskedasticity check)
+            # Equivalent to: plot(fitted(m7), resid(m7))
+            # ------------------------------------------------------------
+            
+            diag_df <- data.frame(
+              fitted = as.numeric(fitted(model)),
+              resid  = as.numeric(resid(model))
+            )
+            
+            p_homo <- ggplot(diag_df, aes(x = fitted, y = resid)) +
+              geom_point(alpha = 0.35, size = 1) +
+              geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+              geom_smooth(method = "loess", se = FALSE, color = "black") +
+              labs(
+                title = "Residuals vs Fitted",
+                subtitle = "Homoskedasticity check (look for constant spread, no funnel)",
+                x = "Fitted values",
+                y = "Residuals"
+              ) +
+              theme(
+                plot.title = element_text(hjust = 0.5)
+              )
+            
+            # ------------------------------------------------------------
             # COMBINE into ONE figure (patchwork)
             # Layout: boxplot on top, hist + qq below
             # ------------------------------------------------------------
-            p_all <- p_box / (p_hist + p_qq) +
+            p_all <- (p_box + p_hist) / (p_qq + p_homo) +
               plot_annotation(
                 title = paste("Diagnostics:", filename_export_diagnostic),
                 theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))

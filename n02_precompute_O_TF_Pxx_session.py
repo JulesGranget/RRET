@@ -1,7 +1,7 @@
 
 
 import joblib
-
+import plotly
 
 from n00_config_O_params import *
 from n00bis_config_O_analysis_functions import *
@@ -12,11 +12,12 @@ from n00ter_X_manip_data import *
 
 
 ################################
-######## PRECOMPUTE TF ########
+######## VISUALIZE SIGS ########
 ################################
 
-#sujet, norm_param = sujet_list[6], 'rscore'
-def precompute_tf_allconv_from_epoch(sujet, norm_param):
+
+#sujet = sujet_list[2]
+def visualize_sig(sujet):
 
     #### verify if already computed
     # os.chdir(os.path.join(path_precompute, 'TF', 'session'))
@@ -144,6 +145,240 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
         np.where(np.isnan(data_linear[0]))
         plt.plot(data_linear[0])
         plt.show()
+
+    #### verify sigs
+    loca_list_modified = modify_loca_name(loca_list)
+    
+    mask_loca_sel = []
+    for _chan in loca_list_modified[:,0]:
+        if _chan in ROI_short_list:
+            mask_loca_sel.append(True)
+        else:
+            mask_loca_sel.append(False)
+
+    data_filtered = data_linear[mask_loca_sel]
+    loca_list_filtered = loca_list_modified[:,0][mask_loca_sel]
+    chan_list_filtered = chan_list[mask_loca_sel]
+    time_vec = np.arange(data_filtered.shape[-1])
+
+    data_down = scipy.signal.resample_poly(data_filtered, up=1, down=10, axis=1)
+    respi_down = scipy.signal.resample_poly(resp_linear, up=1, down=10)
+    time_down = scipy.signal.resample_poly(time_vec, up=1, down=10, axis=0)
+
+    # plt.plot(time_vec, data_filtered[0], label='raw')
+    # plt.plot(time_down, data_down[0], label='dw')
+    # plt.legend()
+    # plt.show() 
+
+    # for _chan_i, _chan in enumerate(loca_list_filtered):
+
+    #     plt.plot(scipy.stats.zscore(data_down[_chan_i]) - _chan_i * 2, label=_chan)
+
+    # plt.legend()
+    # plt.show() 
+
+    import plotly.graph_objects as go
+
+    fig = plotly.graph_objects.Figure()
+
+    y = scipy.stats.zscore(respi_down)
+
+    fig.add_trace(
+            go.Scatter(
+                y=y,
+                mode="lines",
+                name='respi'
+            )
+        )
+
+    for chan_i, chan in enumerate(loca_list_filtered):
+
+        y = scipy.stats.zscore(data_down[chan_i]) - chan_i * 4
+
+        fig.add_trace(
+            go.Scatter(
+                y=y,
+                mode="lines",
+                name=f"{chan_list_filtered[chan_i]} {chan}"
+            )
+        )
+
+    fig.update_layout(
+        template="simple_white",
+        title=f"{sujet}",
+        xaxis_title="Samples",
+        yaxis_title="Amplitude (stacked)",
+        height=800
+    )
+
+    fig.show()
+
+
+
+
+
+
+################################
+######## PRECOMPUTE TF ########
+################################
+
+#sujet, norm_param = sujet_list[0], 'rscore'
+def precompute_tf_allconv_from_epoch(sujet, norm_param):
+
+    #### verify if already computed
+    os.chdir(os.path.join(path_precompute, 'TF', 'session'))
+
+    if os.path.exists(f"{sujet}_rsp_ctrl_tf_allchan_stretch_post.npy"):
+        print(f'{sujet} ALREADY COMPUTED', flush=True)
+        return
+
+    print(f'TF PRECOMPUTE {sujet}', flush=True)
+
+    #### get params
+    data, resp, chanlist, localist = get_data_sujet_fullsig(sujet)
+
+    time_vec_sec = np.arange(resp[0].size)/srate - (resp[0].size/srate)/2
+    chan_list, loca_list = get_chanlist(sujet)
+
+    _half_time = np.where(np.isclose(time_vec_sec, 0, atol=1e-3))[0][0]
+
+    os.chdir(os.path.join(path_prep))
+    df_resp_cycle = pd.read_excel(f"{sujet}_breathInfo.xlsx")
+
+    #### generate linear signals
+    print('CONSTRUCT LINEAR SIG')
+    resp_linear = []
+    data_linear = []
+    inspi_starts = []
+    _len_resp = 0
+
+    nan_epochs = []
+
+    for epoch_i in range(resp.shape[0]):
+
+        print_advancement(epoch_i, resp.shape[0], [25,50,75])
+
+        if np.isnan(data[:,epoch_i]).sum() != 0 or np.isnan(resp[epoch_i]).sum() != 0:
+            nan_epochs.append(epoch_i)
+            continue
+
+        if debug:
+            plt.plot(resp[epoch_i])
+            plt.show()
+
+            plt.pcolormesh(data[:,epoch_i])
+            plt.show()
+
+        if epoch_i == 0:
+
+            resp_linear.append(resp[epoch_i])
+            data_linear.append(data[:,epoch_i])
+            inspi_starts.append(_half_time)
+            _len_resp += resp[epoch_i].size
+
+        else:
+
+            _resp_m1 = resp[epoch_i-1]
+            _resp_1 = resp[epoch_i]
+
+            _congruence = []
+            for i in range(_resp_m1.size):
+                _congruence.append((_resp_m1 == np.roll(_resp_1, i)).sum())
+            _congruence = np.array(_congruence)
+
+            _i_roll = np.argmax(_congruence)
+
+            if _i_roll == 0 or srate*1 > _congruence[_i_roll]:
+                _i_roll_tot = 0
+            else:
+                _i_roll_tot = _resp_m1.size - _i_roll
+
+            if debug:
+                plt.plot(np.arange(_resp_m1.size), _resp_m1)
+                plt.plot(np.arange(np.concat([np.zeros(int(_resp_m1.size/2)), _resp_1]).size), np.concat([np.zeros(int(_resp_m1.size/2)), _resp_1]))
+                plt.show()
+
+                plt.plot(_congruence)
+                plt.show()
+
+                plt.scatter(np.arange(_resp_m1.size), _resp_m1)
+                plt.scatter(np.arange(np.concat([np.zeros(_i_roll), _resp_1]).size), np.concat([np.zeros(_i_roll), _resp_1]))
+                plt.show()
+
+                plt.plot(_resp_m1)
+                plt.plot(np.concat([np.zeros(_resp_m1.size), _resp_1[_i_roll_tot:]]))
+                plt.show()
+
+            _sig_add_resp = _resp_1[_i_roll_tot:]
+            _sig_add_data = data[:,epoch_i,_i_roll_tot:]
+
+            resp_linear.append(_sig_add_resp)
+            data_linear.append(_sig_add_data)
+
+            _len_resp += _resp_1[_i_roll_tot:].size
+            _inspi_start = _len_resp - _half_time 
+
+            if debug:
+                plt.plot(_resp_m1)
+                plt.vlines(inspi_starts[epoch_i-1], ymin=_resp_m1.min(), ymax=_resp_m1.max(), color='b')
+                plt.plot(np.concat([np.zeros(_i_roll), _resp_1]))
+                plt.vlines(_inspi_start, ymin=_resp_m1.min(), ymax=_resp_m1.max(), color='r')
+                plt.show()
+
+            inspi_starts.append(_inspi_start)
+            
+        if debug:
+
+            plt.plot(resp_linear)
+            plt.show()
+
+    resp_linear = np.concatenate(resp_linear, axis=0)
+    data_linear = np.concatenate(data_linear, axis=1)
+    inspi_starts = np.array(inspi_starts)
+
+    if len(nan_epochs) != 0:
+        df_resp_cycle = df_resp_cycle.drop(index=nan_epochs)
+
+    if np.isnan(resp_linear).sum() != 0 or np.isnan(data_linear).sum() != 0:
+        raise ValueError('NAN IN DATA')
+
+    if debug:
+
+        plt.plot(resp_linear)
+        plt.vlines(inspi_starts, ymin=resp_linear.min(), ymax=resp_linear.max(), color='r')
+        plt.show()
+
+        sig = data_linear[0]
+        plt.plot(sig)
+        plt.vlines(inspi_starts, ymin=sig.min(), ymax=sig.max(), color='r')
+        plt.show()
+
+        correct_sujet_inspi_start = np.array([369787, 371347, 373417,
+        375477, 377727, 379957, 382047, 383867, 385992, 388252, 390372,
+        392637, 394702, 396822, 398642, 400922, 402927, 408928])
+        inspi_starts_corrected = np.array([_inspi for _inspi in inspi_starts if _inspi not in correct_sujet_inspi_start])
+
+        sig = data_linear[0]
+        plt.plot(sig)
+        plt.vlines(inspi_starts_corrected, ymin=sig.min(), ymax=sig.max(), color='r')
+        plt.show()
+
+        np.where(np.isnan(data_linear[0]))
+        plt.plot(data_linear[0])
+        plt.show()
+
+    #### correct for artifacts
+    if sujet == 'NS211':
+
+        correct_sujet_inspi_start = np.array([369787, 371347, 373417,
+        375477, 377727, 379957, 382047, 383867, 385992, 388252, 390372,
+        392637, 394702, 396822, 398642, 400922, 402927, 408928])
+        inspi_starts_corrected = np.array([[_inspi_i, _inspi] for _inspi_i, _inspi in enumerate(inspi_starts) if _inspi not in correct_sujet_inspi_start])
+
+        df_resp_cycle = df_resp_cycle.iloc[inspi_starts_corrected[:,0]]
+
+        inspi_starts = inspi_starts_corrected[:,1]
+
     
     #### select wavelet parameters
     wavelets = get_wavelets()
@@ -518,6 +753,11 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
 
 
+
+
+
+
+
 ################################
 ######## EXTRACT POWER ########
 ################################
@@ -559,7 +799,8 @@ def extract_power(sujet):
 
         for cond in conditions:
 
-            tf_allcond[pre_post][cond] = np.load(f'{sujet}_{cond}_tf_allchan_stretch_{pre_post}.npy')
+            _mat = np.load(f'{sujet}_{cond}_tf_allchan_stretch_{pre_post}.npy')
+            tf_allcond[pre_post][cond] = _mat
 
     #### extract
     max_cycles = np.max([tf_allcond['post'][cond].shape[1] for cond in conditions])
@@ -624,6 +865,7 @@ def extract_power(sujet):
 
 if __name__ == '__main__':
 
+    #### PRECOMPUTE
     norm_param = 'rscore'
     
     #sujet = sujet_list[0]
@@ -632,7 +874,12 @@ if __name__ == '__main__':
         precompute_tf_allconv_from_epoch(sujet, norm_param)
         extract_power(sujet)
 
+    #### VISU
 
+    #sujet = sujet_list[0]
+    for sujet in sujet_list:
+
+        visualize_sig(sujet)
 
 
 

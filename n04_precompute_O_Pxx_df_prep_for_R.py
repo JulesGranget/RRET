@@ -41,11 +41,11 @@ def export_Pxx_df():
             df_band_Pxx_allsujet.append(_xr_allphase.to_dataframe().reset_index().dropna())
 
         df_band_Pxx_allsujet = pd.concat(df_band_Pxx_allsujet)
-        ROI_corr = modify_loca_name(df_band_Pxx_allsujet['ROI'].values)[:,0]
-        df_band_Pxx_allsujet['ROI'] = ROI_corr
 
         df_band_Pxx_allsujet[['resp', 'state']] = df_band_Pxx_allsujet['cond'].str.split('_', expand=True).rename(columns={0: 'resp', 1: 'state'})
         df_band_Pxx_allsujet = df_band_Pxx_allsujet.drop(columns=['cond'])
+
+        df_band_Pxx_allsujet = df_band_Pxx_allsujet.query(f"ROI in {ROI_short_list}")
 
         #### export
         os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_R'))
@@ -132,10 +132,6 @@ def get_reg_allsujet():
         
         fp = os.path.join(path_precompute, "TF", "session", f"{sujet}_xr_Pxx.nc")
         da = xr.load_dataarray(fp)
-
-        chanlist, localist = get_chanlist(sujet)
-        localist_corr = modify_loca_name(localist)[:,0]
-        da = da.assign_coords(ROI=("chan", localist_corr))
 
         da = da.expand_dims(sujet=[sujet])
 
@@ -283,7 +279,6 @@ def get_reg_allsujet():
     time_phase_list = ['pre', 'post']
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_ROI for _ROI in df_loca_allsujet['loca'].unique() if _ROI.find('UNSORTED') == -1]
 
     reg_allsujet_data = []
 
@@ -349,6 +344,8 @@ def get_reg_allsujet():
 
         df_reg_patient = pd.concat(reg_patient_chan)
 
+        df_reg_patient = df_reg_patient.query(f"ROI in {ROI_short_list}")
+
         os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_reg'))
         df_reg_patient.to_excel(f"df_reg_{sujet}.xlsx")
 
@@ -399,10 +396,6 @@ def get_reg_allROI():
         
         fp = os.path.join(path_precompute, "TF", "session", f"{sujet}_xr_Pxx.nc")
         da = xr.load_dataarray(fp)
-
-        chanlist, localist = get_chanlist(sujet)
-        localist_corr = modify_loca_name(localist)[:,0]
-        da = da.assign_coords(ROI=("chan", localist_corr))
 
         da = da.expand_dims(sujet=[sujet])
 
@@ -546,11 +539,18 @@ def get_reg_allROI():
 
     #### identify ROI extarction patient
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_ROI for _ROI in df_loca_allsujet['loca'].unique() if _ROI.find('UNSORTED') == -1]
+    ROI_list = []
+    for _ROI in df_loca_allsujet['loca'].unique():
+        
+        if isinstance(_ROI, str):
+        
+            if _ROI.find('UNSORTED') == -1:
+
+                ROI_list.append(_ROI)
 
     ROI_id_extraction = {}
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         ROI_id_extraction[ROI] = {'sujet_list' : [], 'chan_i_list' : {}}
 
@@ -572,7 +572,7 @@ def get_reg_allROI():
     time_phase_list = ['pre', 'post']
 
     #ROI_i, ROI = 0, ROI_list[0]
-    for ROI_i, ROI in enumerate(ROI_list):
+    for ROI_i, ROI in enumerate(ROI_short_list):
 
         if ROI not in ROI_short_list:
             continue
@@ -707,21 +707,11 @@ def get_reg_allROI():
 
         return pd.concat(reg_ROI)
 
-    reg_allROI_data = joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(generate_reg_ROI)(ROI_i, ROI) for ROI_i, ROI in enumerate(ROI_list))
+    reg_allROI_data = joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(generate_reg_ROI)(ROI_i, ROI) for ROI_i, ROI in enumerate(ROI_short_list))
     df_reg_allROI = pd.concat(reg_allROI_data)
 
     os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_reg'))
     df_reg_allROI.to_excel(f"df_reg_ALLROI.xlsx")
-
-    #### inspect
-    if debug:
-
-        _df = generate_reg_patient(sujet, chan_i, chan)
-        _df.query(f"cond=='{cond}' and band=='{band}' and phase_protocol=='pre' and phase_cycle=='{cycle_phase}' and rf_metric=='oc_ratio'")
-        _df.query(f"cond=='{cond}' and band=='{band}' and phase_protocol=='post' and phase_cycle=='{cycle_phase}' and rf_metric=='oc_ratio'")
-
-        _df.query(f"cond=='{cond}' and band=='{band}' and phase_protocol=='pre' and phase_cycle=='{cycle_phase}' and rf_metric=='duration'")
-        _df.query(f"cond=='{cond}' and band=='{band}' and phase_protocol=='post' and phase_cycle=='{cycle_phase}' and rf_metric=='duration'")
 
     #### generate df_R_allROI
     rf_metric_allphase_cycle_short = ['amplitude', 'oc_ratio', 'oc_val']
@@ -764,7 +754,7 @@ def get_reg_allROI():
 
         return pd.concat(reg_ROI)
 
-    reg_allROI_alldata = joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(generate_reg_ROI_data_R)(ROI_i, ROI) for ROI_i, ROI in enumerate(ROI_list))
+    reg_allROI_alldata = joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(generate_reg_ROI_data_R)(ROI_i, ROI) for ROI_i, ROI in enumerate(ROI_short_list))
     df_reg_allROI_alldata_R = pd.concat(reg_allROI_alldata)
 
     filename = os.path.join(path_precompute, 'TF', 'session', 'df_R', f"df_reg_ALLROI_ALLDATA_R.xlsx")

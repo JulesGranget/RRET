@@ -12,19 +12,6 @@ debug = False
 
 
 
-"""
-
-I ) Jose says increases in pressure during the challenge part. 
-He wants to see if this increase is linked to a specific increase in gamma band activity.
-The objective is to take succesive respiratory cycle during challenge that have high pressure difference and correlate it to gamma responses.
-The hypothesis behid : maybe changes in gamma activities make patient aware in their breathing and make them breath with more pressure.
-
-II ) During the occlusion there is an increase in pressure. We want to see if during the challenge these increase are different.
-We take pressure during occlusion during baseline and rest, take the increase and then see if its different and if the gamma power is different. 
-
-"""
-
-
 
 
 
@@ -80,6 +67,15 @@ def get_data_sujet_fullsig(sujet):
 
             chanlist = np.array(["".join(chr(c) for c in f[_ref][:].flatten()) for _ref in data['labels'][0]])
             localist = np.array(["".join(chr(c) for c in f[_ref][:].flatten()) for _ref in data['labelsFSurf'][0]])
+
+    #### remove bad chans
+    df_loca_allsujet = get_df_loca_allsujet_raw()
+    df_loca_sujet = df_loca_allsujet.query(f"sujet == '{sujet}'")
+    mask_loca_sujet = np.where(df_loca_sujet['Select'] == 1)[0]
+
+    data_epoch = data_epoch[mask_loca_sujet]
+    chanlist = chanlist[mask_loca_sujet]
+    localist = localist[mask_loca_sujet]
 
     return data_epoch, resp_epoch, chanlist, localist
 
@@ -515,19 +511,6 @@ def explore_data():
         df_count_cycle_allsujet = df_count_cycle_allsujet.drop(columns=['Unnamed: 0'])
 
     df_count_cycle_allsujet.to_excel('ALLSUJET_count_cycle.xlsx')
-
-    #### extract chanlist
-
-    #sujet_i, sujet = 0, 'NS131_02'
-    for sujet_i, sujet in enumerate(sujet_list): 
-
-        print(sujet)
-
-        data_allcond, resp_allcond, chanlist, localist = get_data_sujet(sujet)
-
-        os.chdir(os.path.join(path_precompute, 'chanlist'))
-        np.save(f"{sujet}_chanlist.npy", chanlist)
-        np.save(f"{sujet}_localist.npy", localist)
 
 
     #### extract pressure for all

@@ -23,6 +23,7 @@ sujet_list = ['NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208',
 
 ROI_short_list = ['Amygdala', 'insula-ant', 'lateralorbitofrontal', 'Hippocampus', 'insula-pos', 'medialorbitofrontal', 'insula', 'postcentral',
                       'precentral', 'Brain-Stem']
+sujet_thresh = 3
 
 
 cond_list = ['VS', 'CHARGE']

@@ -24,10 +24,9 @@ from plotly.subplots import make_subplots
 
 def generate_all_df_Pxx_wholecycle():
 
-    os.chdir(os.path.join(path_results, 'LMM', 'df'))
+    phase_cycle_list = ['inspi', 'expi']
 
-    df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
+    os.chdir(os.path.join(path_results, 'LMM', 'df'))
 
     df_R_Pxx = []
 
@@ -35,7 +34,7 @@ def generate_all_df_Pxx_wholecycle():
 
         for band in freq_band_dict:
 
-            for ROI in ROI_list:
+            for ROI in ROI_short_list:
 
                 _df = pd.read_excel(f"RES_{band}_{phase_cycle}_{ROI}_Pxx.xlsx")
                 _df_add = pd.concat([pd.DataFrame({'phase_cycle' : [phase_cycle]*_df.shape[0], 'band' : [band]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value']]], axis=1)
@@ -85,28 +84,26 @@ def p_to_stars(p):
 
 def export_res_Pxx():
 
-    #### params
-    sujet_thresh = 3
+    phase_cycle_list = ['inspi', 'expi']
 
     #### load df
     df_R_Pxx = generate_all_df_Pxx_wholecycle()
 
     df_loca_allsujet = get_df_loca_allsujet()
-    ROI_list = [_loca for _loca in df_loca_allsujet['loca'].unique() if _loca.find('UNSORTED') == -1]
 
     label_name_nsujet = {}
     
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
 
         _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
         label_name_nsujet[ROI] = f"{ROI} s({_nsujet})"
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_R_Pxx['ROI'] = df_R_Pxx['ROI'].replace({ROI: label_name_nsujet[ROI]})
 
     df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
 
-    for ROI in ROI_list:
+    for ROI in ROI_short_list:
         df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
 
     localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
@@ -180,12 +177,18 @@ def export_res_Pxx():
 
 
         #### inspi/expi
-    color_map = {"inspi": "steelblue",
-                "expi": "darkorange",}
+    color_map = {
+        "inspi": "#1f77b4",
+        "expi":  "#d62728" 
+    }
 
     LMM_param_list = ['respoc', 'statechl', 'respoc:statechl']
+    
+    ROI_order = ['Amygdala s(8)', 'Hippocampus s(7)', 'insula-ant s(5)', 'insula-pos s(4)', 'lateralorbitofrontal s(5)', 'medialorbitofrontal s(5)', 'postcentral s(3)', 'precentral s(4)']
 
+    #band = 'theta'
     for band in freq_band_dict:
+
 
         fig = make_subplots(
             rows=len(LMM_param_list),
@@ -194,13 +197,13 @@ def export_res_Pxx():
             subplot_titles=LMM_param_list
         )
 
+        y_max = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}").copy()["estimate"].abs().max()
+
         for r, LMM_param in enumerate(LMM_param_list, start=1):
 
             _df_plot = df_R_Pxx.query(f"band == '{band}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}").copy()
 
             _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
-
-            y_max = _df_plot["estimate"].abs().max()
 
             for phase_cycle in _df_plot["phase_cycle"].unique():
 
@@ -225,17 +228,25 @@ def export_res_Pxx():
                     col=1
                 )
 
+                fig.update_xaxes(
+                    categoryorder="array",
+                    categoryarray=ROI_order,
+                    row=r,
+                    col=1
+                )
+
         fig.update_layout(
             title=f"{band} all ROI",
+            template="simple_white",
             barmode="group",
             xaxis_tickangle=-45,
             yaxis_title="estimate",
             legend_title="phase_cycle",
             height=320 * len(phase_cycle_list),  # scale height
-            width=320 * 2,
+            width=500,
         )
 
-        fig.show()
+        # fig.show()
 
         outdir = os.path.join(path_results, "LMM", "fig", "Pxx", "summary")
         fig.write_html(
@@ -243,9 +254,12 @@ def export_res_Pxx():
             include_plotlyjs="cdn"
         )
 
-
-
-
+    #### export df data
+    df_export = df_R_Pxx.query(f"phase_cycle != 'whole' and ROI in {ROI_plot_short_list} and term != '(Intercept)'")
+    
+    output_df = os.path.join(path_results, "LMM", "fig", "Pxx", "summary")
+    filename = os.path.join(output_df, "df_Pxx_LMM.xlsx")
+    df_export.to_excel(filename)
 
 
 

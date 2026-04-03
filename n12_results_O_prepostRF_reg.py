@@ -70,7 +70,7 @@ def export_reg_PREPOST_example():
 
         # plt.show()
 
-        filename = os.path.join(path_results, "respi", "prepost", f"lmplot_amp_OCratio_{cond}.png")
+        filename = os.path.join(path_results, "respi", "pre_amp", f"lmplot_amp_OCratio_{cond}.png")
         plt.savefig(filename)
 
         plt.close('all')
@@ -162,13 +162,17 @@ def export_res_LMM_prepost():
         bargap=0.3
     )
 
-    fig.show()
+    # fig.show()
 
-
-    filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'ctrl', f"REG_RF_{band}_{phase_protocol}.html")
+    filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'pre_amp', f"REG_RF_preamp.html")
     fig.write_html(filepath)
 
-
+    #### export df values
+    df_export = df_LMM_prepost.query(f"term != '(Intercept)'")
+    
+    filepath = os.path.join(path_results, 'respi', 'pre_amp')
+    filename = os.path.join(filepath, "df_REG_RF_preamp.xlsx")
+    df_export.to_excel(filename)
 
 
 
@@ -185,6 +189,7 @@ if __name__ == '__main__':
 
 
     export_reg_PREPOST_example()
+    export_res_LMM_prepost()
 
 
 
