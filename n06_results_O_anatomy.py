@@ -126,9 +126,7 @@ def export_anat_plot():
 
 if __name__ == '__main__':
 
-    count_removed_contacts()
     export_anat_plot()
-    export_allsujet_anat()
 
 
 

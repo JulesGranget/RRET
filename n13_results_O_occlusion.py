@@ -277,7 +277,7 @@ def export_plot_oc_stats():
 
 if __name__ == '__main__':
 
-    export_chl_stats()
+    export_challenge_stats()
     export_plot_oc_resp()
     export_plot_oc_stats()
 
