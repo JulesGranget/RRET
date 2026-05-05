@@ -72,6 +72,21 @@ os.chdir(init_workdir)
 
 
 ########################################
+######## ECG PARAMS ########
+########################################
+
+ecg_sujet_pin_choice = {'NS131_02' : [0], 'NS202' : [3], 'NS203' : [2], 'NS205' : ['HR'], 
+                        'NS206' : ['HR'], 'NS208' : ['HR'], 'NS211' : [0],  'NS213' : ['HR'],  
+                        'NS215' : ['HR']}
+
+sujet_list_ecg = ['NS131_02', 'NS203'] #NS202 removed no baseline, NS211 too bad ECG
+
+ecg_extract_time = 30 #seconds
+ecg_lower_limit_nHR = 10
+
+ecg_chunk_time = 5 #seconds
+
+########################################
 ######## CONSTRUCT LINEAR SIG ########
 ########################################
 
