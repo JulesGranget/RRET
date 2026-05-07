@@ -2,9 +2,9 @@
 
 
 
-from n00_config_O_params import *
-from n00bis_config_O_analysis_functions import *
-from n00ter_X_manip_data import *
+from A_config.n01_O_params import *
+from A_config.n02_O_analysis_functions import *
+from A_config.n03_X_manip_data import *
 
 import plotly.express as px
 import plotly.graph_objects as go

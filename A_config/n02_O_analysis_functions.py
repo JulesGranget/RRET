@@ -26,7 +26,7 @@ import seaborn as sns
 
 import neurokit2 as nk
 
-from n00_config_O_params import *
+from A_config.n01_O_params import *
 
 
 debug = False

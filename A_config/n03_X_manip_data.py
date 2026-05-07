@@ -3,8 +3,8 @@
 import h5py
 
 
-from n00_config_O_params import *
-from n00bis_config_O_analysis_functions import *
+from A_config.n01_O_params import *
+from A_config.n02_O_analysis_functions import *
 
 
 

@@ -2,9 +2,9 @@
 
 
 
-from n00_config_O_params import *
-from n00bis_config_O_analysis_functions import *
-from n00ter_X_manip_data import *
+from A_config.n01_O_params import *
+from A_config.n02_O_analysis_functions import *
+from A_config.n03_X_manip_data import *
 
 
 
@@ -15,6 +15,89 @@ from n00ter_X_manip_data import *
 ########################################
 ######## PLOT RESPI MEAN ########
 ########################################
+
+
+def identify_allcycles_for_allcond():
+
+    #### load
+    df_resp_allsujet_list = []
+
+    for sujet in sujet_list:
+
+        if sujet == 'NS215':
+
+            path_respfeatures_sujet = os.path.join(path_precompute, 'RESP', 'respfeatures', f"{sujet}_cycles_info_cleaned.xlsx")
+            df_resp_cycle_cleaned_sujet = pd.read_excel(path_respfeatures_sujet)
+            df_resp_cycle_cleaned_sujet['sujet'] = df_resp_cycle_cleaned_sujet.shape[0] * [sujet]
+            max_val_load = df_resp_cycle_cleaned_sujet[['challengeLoadMagInh', 'challengeLoadMagExh']].values.max(axis=1)
+            df_resp_cycle_cleaned_sujet['challengeLoadMag'] = max_val_load
+            df_resp_cycle_cleaned_sujet = df_resp_cycle_cleaned_sujet.drop(columns=['challengeLoadMagInh', 'challengeLoadMagExh'])
+            df_resp_allsujet_list.append(df_resp_cycle_cleaned_sujet)
+
+        else:
+
+            path_respfeatures_sujet = os.path.join(path_precompute, 'RESP', 'respfeatures', f"{sujet}_cycles_info_cleaned.xlsx")
+            df_resp_cycle_cleaned_sujet = pd.read_excel(path_respfeatures_sujet)
+            df_resp_cycle_cleaned_sujet['sujet'] = df_resp_cycle_cleaned_sujet.shape[0] * [sujet]
+            df_resp_allsujet_list.append(df_resp_cycle_cleaned_sujet)
+
+    df_resp_allsujet = pd.concat(df_resp_allsujet_list)
+    df_resp_allsujet = df_resp_allsujet.fillna(0)
+    df_resp_allsujet = df_resp_allsujet.query(f"isGoodBreath == 1")
+
+    #### sort
+    df_control_count = df_resp_allsujet.query(f"isControl == 1 and isChallenge == 0 ").groupby(['sujet', 'occlusionType']).size().reset_index(name='control')
+    df_chl_tot_count = df_resp_allsujet.query(f"isControl == 0 and isChallenge == 1 ").groupby(['sujet', 'occlusionType']).size().reset_index(name='chl_tot')
+    df_chl_MECA_count = df_resp_allsujet.query(f"isControl == 0 and isChallenge == 1 and challengeLoadMag != 0 and challengeCO2conc == 0").groupby(['sujet', 'occlusionType']).size().reset_index(name='chl_MECA')
+    df_chl_CO2_count = df_resp_allsujet.query(f"isControl == 0 and isChallenge == 1 and challengeLoadMag == 0 and challengeCO2conc != 0").groupby(['sujet', 'occlusionType']).size().reset_index(name='chl_CO2')
+    df_chl_BOTH_count = df_resp_allsujet.query(f"isControl == 0 and isChallenge == 1 and challengeLoadMag != 0 and challengeCO2conc != 0").groupby(['sujet', 'occlusionType']).size().reset_index(name='chl_both')
+    df_plot = df_control_count
+    keys = ['sujet', 'occlusionType']
+
+    df_plot = df_plot.merge(df_chl_tot_count, on=keys, how='outer')
+    df_plot = df_plot.merge(df_chl_MECA_count, on=keys, how='outer')
+    df_plot = df_plot.merge(df_chl_CO2_count, on=keys, how='outer')
+    df_plot = df_plot.merge(df_chl_BOTH_count, on=keys, how='outer')
+
+    df_plot = pd.melt(df_plot, id_vars=keys, value_vars=['control', 'chl_tot', 'chl_MECA', 'chl_CO2', 'chl_both'], value_name='count', var_name='cond')
+
+    # occlusionType	:  0 no occlusion, 1 control occulusion, 2 occlusion
+    df_plot = df_plot.query(f"occlusionType != 1")
+
+    df_plot_allOCtogether = df_plot.groupby(['sujet', 'cond']).sum('count').reset_index()
+
+    #### plot
+    path_export_plot = os.path.join(path_results, 'respi', 'count_cycles')
+
+    g = sns.catplot(kind='bar', data=df_plot, x='sujet', y="count", hue='occlusionType', col='cond')
+    for ax in g.axes.flat:
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(10, color='red', linestyle='-', linewidth=1)
+    g.savefig(os.path.join(path_export_plot, f"count_cycle_allcond_allpatient_allOC.png"))
+    # plt.show()
+
+    g = sns.catplot(kind='bar', data=df_plot_allOCtogether, x='sujet', y="count", col='cond')
+    for ax in g.axes.flat:
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(10, color='red', linestyle='-', linewidth=1)
+    g.savefig(os.path.join(path_export_plot, f"count_cycle_allcond_allpatient_noOCcond.png"))
+    # plt.show()
+
+    g = sns.catplot(kind='bar', data=df_plot_allOCtogether, x='sujet', y="count", col='cond')
+    for ax in g.axes.flat:
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(10, color='red', linestyle='-', linewidth=1)
+    plt.ylim(0, 50)
+    g.savefig(os.path.join(path_export_plot, f"count_cycle_allcond_allpatient_noOCcond_ZOOM.png"))
+    # plt.show()
+
+    plt.close('all')
+
+
+
+
+
+
 
 #sujet = sujet_list[0]
 def export_resp_mean(sujet):
@@ -224,13 +307,15 @@ def export_count_cycle_allsujet():
 
 if __name__ == '__main__':
 
-    
+    identify_allcycles_for_allcond()
+
     for sujet in sujet_list:
 
         export_resp_mean(sujet)
 
     export_respi_allsujet()
     export_count_cycle_allsujet()
+    
 
 
 

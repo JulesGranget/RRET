@@ -20,6 +20,8 @@ srate = 500
 sujet_list = ['NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208',
               'NS211',  'NS213',  'NS215']
 
+sujet_list_interaction_analysis = ['NS131_02', 'NS206', 'NS211']
+
 
 ROI_short_list = ['Amygdala', 'insula-ant', 'lateralorbitofrontal', 'Hippocampus', 'insula-pos', 'medialorbitofrontal', 'insula', 'postcentral',
                       'precentral', 'Brain-Stem']
