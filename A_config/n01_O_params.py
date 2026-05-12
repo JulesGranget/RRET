@@ -29,6 +29,7 @@ sujet_thresh = 3
 
 
 cond_list = ['VS', 'CHARGE']
+cond_list_interaction = ['ctrl', 'CO2', 'MECA', 'BOTH_MC']
 
 
 sujet_list_allcond = {'rsp_ctrl' : ['NS086_02', 'NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208', 'NS211', 'NS213', 'NS215'], 
