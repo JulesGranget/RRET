@@ -6,15 +6,6 @@ from A_config.n01_O_params import *
 from A_config.n02_O_analysis_functions import *
 from A_config.n03_X_manip_data import *
 
-from nilearn import plotting
-import joblib
-import statsmodels.api as sm
-from io import StringIO
-from statsmodels.tools.sm_exceptions import ValueWarning
-import warnings
-
-
-
 
 
 
@@ -25,11 +16,6 @@ import warnings
 ################################
 
 def Pxx_relative_patientwise_allpatient():
-
-
-    baseline_cond = 'rsp_ctrl'
-
-    df_coords_allsujet = get_df_loca_allsujet()
 
     #### load Pxx
     path_load_data = os.path.join(path_precompute, 'TF', 'MECACO2_INTER')
@@ -61,13 +47,13 @@ def Pxx_relative_patientwise_allpatient():
     col_names_diff = ['MECA_diff', 'CO2_diff', 'BOTH_MC_diff']
     df_diff = pd.melt(df_diff, id_vars=[col for col in df_diff.columns if col not in col_names_diff], value_vars=col_names_diff, value_name='Pxx', col_level='cond')
 
-    band = 'gamma'
+    for band in df_diff['band'].unique():
     
-    df_plot = df_diff.query(f"band == '{band}' and ROI in {ROI_short_list}")
-    sns.catplot(df_plot, kind='strip', x='cond', y='Pxx', hue='sujet', row='phase', col='ROI', sharey=False, size=3)
-    # plt.show()
+        df_plot = df_diff.query(f"band == '{band}' and ROI in {ROI_short_list}")
+        sns.catplot(df_plot, kind='strip', x='cond', y='Pxx', hue='sujet', row='phase', col='ROI', sharey=False, size=3)
+        # plt.show()
 
-    plt.savefig(os.path.join(path_export_plot, f"allpatient_allphase_allcond.jpg"))
+        plt.savefig(os.path.join(path_export_plot, f"{band}_allpatient_allphase_allcond.jpg"))
 
 
 
