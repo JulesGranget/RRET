@@ -254,6 +254,10 @@ def export_res_Pxx():
             include_plotlyjs="cdn"
         )
 
+        fig.write_image(
+            os.path.join(path_paper_figure_export, f"{band}_threshROI_LMM.svg")
+        )
+
     #### export df data
     df_export = df_R_Pxx.query(f"phase_cycle != 'whole' and ROI in {ROI_plot_short_list} and term != '(Intercept)'")
     

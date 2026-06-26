@@ -235,6 +235,8 @@ def export_respi_allsujet():
     os.chdir(os.path.join(path_results, 'respi', 'plot_median'))
     fig_cond_allsujet.savefig(f"allsujet_respi_median.png")
 
+    fig_cond_allsujet.savefig(os.path.join(path_paper_figure_export, f"fig03c_allsujet_respi_median.svg"))
+
     plt.close('all')
 
     #### median
@@ -263,6 +265,8 @@ def export_respi_allsujet():
 
     os.chdir(os.path.join(path_results, 'respi', 'plot_median'))
     fig_median.savefig(f"respi_median.png")
+
+    fig_median.savefig(os.path.join(path_paper_figure_export, f"fig03b_respi_median.svg"))
 
     
     
@@ -297,6 +301,14 @@ def export_count_cycle_allsujet():
     output_dir = os.path.join(path_results, 'respi', 'count_cycles')
     filename = os.path.join(output_dir, "ALLSUJET_count_cycle.png")
     fig.savefig(filename)
+
+    filename = os.path.join(path_paper_figure_export, "fig03a_ALLSUJET_count_cycle.svg")
+    fig.savefig(filename)
+
+
+
+
+
 
 
 

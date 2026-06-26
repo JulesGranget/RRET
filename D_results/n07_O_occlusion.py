@@ -1,5 +1,7 @@
 
 
+
+
 from statsmodels.stats.multitest import multipletests
 import itertools
 from A_config.n01_O_params import *
@@ -85,6 +87,9 @@ def export_challenge_stats():
 
     filename_savedf = f"df_stat_rf_metric.xlsx"
     df_stats_chl.to_excel(os.path.join(path_savefig, filename_savedf))
+
+
+
 
 
 
@@ -191,6 +196,10 @@ def export_plot_oc_resp():
     filename_savefig = f"OC_example.png"
     fig_oc_example.savefig(os.path.join(path_savefig, filename_savefig))
 
+    filename_savefig = f"fig03d_OC_example.svg"
+    fig_oc_example.savefig(os.path.join(path_paper_figure_export, filename_savefig))
+
+
 
 
 
@@ -263,6 +272,9 @@ def export_plot_oc_stats():
     path_savefig = os.path.join(path_results, 'respi', 'oc_ratio', 'plot')
     filename_savefig = f"OC_median.png"
     fig_median_oc.savefig(os.path.join(path_savefig, filename_savefig))
+
+    filename_savefig = f"fig03e_OC_median.svg"
+    fig_median_oc.savefig(os.path.join(path_paper_figure_export, filename_savefig))
 
     filename_savedf = f"df_stat_oc.xlsx"
     posthoc.to_excel(os.path.join(path_savefig, filename_savedf))

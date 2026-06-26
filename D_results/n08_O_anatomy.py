@@ -101,9 +101,13 @@ def export_anat_plot():
     plt.tight_layout()
     # plt.show()
 
+    #### export figure
     path_savefig = os.path.join(path_results, 'anatomy')
     filename_savefig = f"allsujet_anat.png"
     fig_anat.savefig(os.path.join(path_savefig, filename_savefig))
+
+    filename_savefig = f"fig01_allsujet_anat.svg"
+    fig_anat.savefig(os.path.join(path_paper_figure_export, filename_savefig))
 
     #### export df anat
     df_export = df_count.pivot_table(index="loca", columns="sujet", values="chan", aggfunc="sum", fill_value=0)

@@ -689,6 +689,89 @@ def export_res_LMM_reg_OC_ALLCOND():
         filepath = os.path.join(path_results, 'Pxx', 'reg_with_RF', 'oc', f"ALLCOND_REG_RF_{band}_{phase_protocol}.html")
         fig.write_html(filepath)
 
+        #### for figure paper
+
+        paper_list_rf_metrics = ['oc_ratio']
+
+        fig_paper = make_subplots(
+            rows=len(estimate_list),
+            cols=len(paper_list_rf_metrics),
+            subplot_titles=paper_list_rf_metrics,
+            shared_yaxes=False
+        )
+
+        for col_i, rf_metric in enumerate(paper_list_rf_metrics, start=1):
+
+            y_max = df_plot.query("rf_metric == @rf_metric and term != '(Intercept)'")["estimate"].abs().max()
+
+            for row_i, estimate in enumerate(estimate_list, start=1):
+
+                df_sub = df_plot.query("rf_metric == @rf_metric and term == @estimate")
+                
+                for j, phase_cycle in enumerate(phase_cycle_list):
+
+                    df_c = df_sub.query("phase_cycle == @phase_cycle")
+
+                    signi_text = [p_to_stars(_p) for _p in df_c['p.value']]
+
+                    fig_paper.add_bar(
+                        x=df_c['ROI'],
+                        y=df_c['estimate'],
+                        name=phase_cycle,
+                        text=signi_text,
+                        textposition="outside",
+                        marker_color=color_map[phase_cycle],
+                        row=row_i,
+                        col=col_i
+                    )
+
+                    margin = y_max * 0.50   # 15% extra space
+
+                    fig_paper.update_yaxes(
+                        range=[-y_max - margin, y_max + margin],
+                        row=row_i,
+                        col=col_i
+                    )
+
+                    fig_paper.update_xaxes(
+                        categoryorder="array",
+                        categoryarray=ROI_order,
+                        row=row_i,
+                        col=col_i
+                    )
+
+                # ROI tick labels centered on ROI groups (x_base)
+                if row_i == 3:
+                    fig_paper.update_xaxes(
+                        tickmode="array",
+                        # tickvals=x,
+                        ticktext=ROI_order,
+                        tickangle=45,
+                        row=row_i,
+                        col=col_i
+                    )
+
+                if col_i == 1:
+                    fig_paper.update_yaxes(
+                        title_text=estimate,
+                        row=row_i,
+                        col=col_i
+                    )
+
+        fig_paper.update_layout(
+            barmode="group",  # we manually position bars on x, so overlay is correct
+            template="simple_white",
+            height=320 * len(estimate_list),
+            width=420 * len(paper_list_rf_metrics),
+            title=f"{phase_protocol} {band}",
+            bargap=0.15
+        )
+
+        # fig_paper.show()
+
+        filepath = os.path.join(path_paper_figure_export, f"ALLCOND_REG_RF_{band}_{phase_protocol}.svg")
+        fig_paper.write_image(filepath)
+
     #### export df values
     df_export = df_LMM_OC_short.query(f"ROI in {ROI_plot_short_list} and term != '(Intercept)' and rf_metric == 'oc_ratio'")
     

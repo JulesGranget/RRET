@@ -69,6 +69,7 @@ path_precompute = os.path.join(path_general, 'Analyses', 'precompute')
 path_results = os.path.join(path_general, 'Analyses', 'results') 
 path_memmap = os.path.join(path_general, 'memmap') 
 
+path_paper_figure_export = os.path.join(path_results, 'figure_paper')
 
 os.chdir(init_workdir)
 

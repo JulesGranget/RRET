@@ -1193,9 +1193,8 @@ def Pxx_relative_patientwise_allpatient():
 
         _df_all = reg_allsujet_data_diff.query(f"rf_metric == '{metric}' and band == '{band}' and coords_info_present == True")
 
-
         ROI_signi_sel = reg_allsujet_data_diff.query(f"band == '{band}' and rf_metric == '{metric}' and loca == 'Amygdala'")["ROI"].values
-        _df_plot = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)' and ROI in {ROI_signi_sel.tolist()}").copy()
+        _df_plot = _df_all.query(f"band == '{band}' and term != '(Intercept)' and ROI in {ROI_signi_sel.tolist()}").copy()
 
         _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
