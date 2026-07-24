@@ -202,6 +202,85 @@ def export_plot_oc_resp():
 
 
 
+def export_Pxx_diff_with_patientwise_info():
+
+    #### load
+    df_Pxx_allband_raw = []
+    
+    os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_R'))
+    
+    for band in freq_band_dict:
+        df_Pxx_allband_raw.append(pd.read_excel(f"df_R_{band}.xlsx").drop(columns=['Unnamed: 0']).query(f"phase_cycle != 'whole' and pre_post == 'post'"))
+
+    df_Pxx_allband_raw = pd.concat(df_Pxx_allband_raw)
+
+    #### reduce
+    df_Pxx_allband_raw['cond'] = df_Pxx_allband_raw['resp'] + '_' + df_Pxx_allband_raw['state']
+    
+    df_Pxx_allband = df_Pxx_allband_raw.groupby(['chan', 'phase_cycle', 'band', 'pre_post', 'ROI', 'sujet', 'resp', 'state', 'cond']).median().reset_index().drop(columns=['cycle', 'pre_post', 'resp', 'state'])
+    df_Pxx_allband = df_Pxx_allband.drop(columns=['chan']).groupby(['phase_cycle', 'band', 'ROI', 'sujet', 'cond']).median().reset_index()
+
+    #### plot
+    os.chdir(os.path.join(path_results, 'Pxx', 'allsujet', 'allpatient_patientlinked'))
+    #band = 'theta'
+    for band in freq_band_dict:
+
+        #ROI_sel = 'Amygdala'
+        for ROI_sel in ROI_short_list:
+
+            df_plot = df_Pxx_allband.query(f"ROI == '{ROI_sel}' and band == '{band}' and cond in ['rsp_ctrl', 'oc_ctrl']")
+
+            phase_order = ['inspi', 'expi']
+            cond_order = ['rsp_ctrl', 'oc_ctrl']
+
+            df_plot['phase_cycle'] = pd.Categorical(df_plot['phase_cycle'], categories=phase_order, ordered=True)
+            df_plot['cond'] = pd.Categorical(df_plot['cond'], categories=cond_order, ordered=True)
+            df_plot = df_plot.sort_values(['sujet', 'phase_cycle', 'cond'])
+
+            fig, ax = plt.subplots(figsize=(7, 6))
+
+            palette = {'rsp_ctrl': 'tab:blue', 'oc_ctrl': 'tab:orange'}
+
+            sns.barplot(data=df_plot, x='phase_cycle', y='Pxx', hue='cond', order=phase_order, hue_order=cond_order,
+                palette=palette, errorbar=None, alpha=0.4, dodge=True, ax=ax)
+
+            phase_x = {phase: i for i, phase in enumerate(phase_order)}
+
+            cond_offset = {'rsp_ctrl': -0.2, 'oc_ctrl': 0.2}
+
+            for (sujet, phase), df_sub in df_plot.groupby(['sujet', 'phase_cycle'],observed=True):
+
+                df_sub = df_sub.sort_values('cond')
+
+                if df_sub['cond'].nunique() != len(cond_order):
+                    continue
+
+                x = [phase_x[phase] + cond_offset[cond] for cond in df_sub['cond']]
+
+                y = df_sub['Pxx'].to_numpy()
+
+                ax.plot(x, y, color='gray', alpha=0.45, linewidth=1, zorder=2)
+
+            for cond in cond_order:
+
+                df_cond = df_plot[df_plot['cond'] == cond]
+
+                x = [phase_x[phase] + cond_offset[cond] for phase in df_cond['phase_cycle']]
+
+                ax.scatter(x, df_cond['Pxx'], color=palette[cond], edgecolor='black', linewidth=0.4, s=45, zorder=3)
+
+            ax.set_xlabel('Respiratory phase')
+            ax.set_ylabel('Pxx')
+            ax.legend(title='Condition')
+
+            plt.suptitle(f"{ROI_sel} {band}")
+            plt.tight_layout()
+
+            # plt.show()
+
+            fig.savefig(f"{ROI_sel}_{band}_2cond_patientlinked.png")
+
+
 
 
 ########################################
@@ -292,5 +371,6 @@ if __name__ == '__main__':
     export_challenge_stats()
     export_plot_oc_resp()
     export_plot_oc_stats()
+    export_Pxx_diff_with_patientwise_info()
 
                         

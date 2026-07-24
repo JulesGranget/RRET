@@ -19,15 +19,15 @@ from A_config.n03_X_manip_data import *
 ######## PRECOMPUTE TF ########
 ################################
 
-#sujet, norm_param = sujet_list_interaction_analysis[0], 'rscore'
+#sujet, norm_param = sujet_list_interaction_analysis[2], 'rscore'
 def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
     #### verify if already computed
     path_export_TF = os.path.join(path_precompute, 'TF', 'MECACO2_INTER') 
 
-    if os.path.exists(os.path.join(path_export_TF, f"{sujet}_ctrl_tf_allchan_stretch_MECACO2INTER.npy")):
-        print(f'{sujet} ALREADY COMPUTED', flush=True)
-        return
+    # if os.path.exists(os.path.join(path_export_TF, f"{sujet}_noc_ctrl_tf_allchan_stretch_MECACO2INTER.npy")):
+    #     print(f'{sujet} ALREADY COMPUTED', flush=True)
+    #     return
 
     print(f'TF PRECOMPUTE {sujet}', flush=True)
 
@@ -293,6 +293,11 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
         _tf.reshape(-1).max()
 
+    #### free space
+    os.chdir(path_memmap)
+    os.remove(f'memmap_{sujet}_tf_conv.npy')
+    del tf_allconv
+
     #### construct dataset
     print('CONSTRUCT CYCLES STRETCH')
 
@@ -453,84 +458,108 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     resp_stretch_cleaned = resp_stretch[extract_good_all]
     resp_features_cleaned = resp_features[extract_good_all]
 
-    # remove occlusions and keep only O2 concentration 21 
+    ##### keep only O2 concentration 21 
     if 'challengeO2conc' not in df_resp_cycle_cleaned.columns: 
         df_resp_cycle_cleaned['challengeO2conc'] = np.ones(df_resp_cycle_cleaned.shape[0]) * 21
 
-    mask_noOC = (df_resp_cycle_cleaned['occlusionType'] == 0).values & (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
-    df_resp_cycle_cleaned = df_resp_cycle_cleaned[mask_noOC]
-    tf_allchan_stretch_cleaned = tf_allchan_stretch_cleaned[:,mask_noOC]
-    resp_stretch_cleaned = resp_stretch_cleaned[mask_noOC]
-    resp_features_cleaned = resp_features_cleaned[mask_noOC]
+    mask_O2 = (df_resp_cycle_cleaned['challengeO2conc'] == 21).values 
+    df_resp_cycle_cleaned = df_resp_cycle_cleaned[mask_O2]
+    tf_allchan_stretch_cleaned = tf_allchan_stretch_cleaned[:,mask_O2]
+    resp_stretch_cleaned = resp_stretch_cleaned[mask_O2]
+    resp_features_cleaned = resp_features_cleaned[mask_O2]
 
     #### extract conditions
     cond_mask = {}
+    oc_list = ['oc', 'noc']
 
-    for cond in cond_list_interaction:
-        if cond == 'ctrl':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['challengeLoadMag'] == 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] == 0).values
-        elif cond == 'CO2':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['challengeLoadMag'] == 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] != 0).values
-        elif cond == 'MECA':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['challengeLoadMag'] != 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] == 0).values
-        elif cond == 'BOTH_MC':
-            _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['challengeLoadMag'] != 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] != 0).values
+    for oc_cond in oc_list:
 
-        cond_mask[cond] = _cond_sel
+        cond_mask[oc_cond] = {}
+
+        if oc_cond == 'oc':
+            _cond_sel_OC = (df_resp_cycle_cleaned['occlusionType'] == 2).values
+        elif oc_cond == 'noc':
+            _cond_sel_OC = (df_resp_cycle_cleaned['occlusionType'] == 0).values
+
+        for cond in cond_list_interaction:
+
+            if cond == 'ctrl':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 1).values & (df_resp_cycle_cleaned['challengeLoadMag'] == 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] == 0).values
+            elif cond == 'CO2':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['challengeLoadMag'] == 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] != 0).values
+            elif cond == 'MECA':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['challengeLoadMag'] != 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] == 0).values
+            elif cond == 'BOTH':
+                _cond_sel = (df_resp_cycle_cleaned['isControl'] == 0).values & (df_resp_cycle_cleaned['challengeLoadMag'] != 0).values & (df_resp_cycle_cleaned['challengeCO2conc'] != 0).values
+
+            cond_mask[oc_cond][cond] = _cond_sel & _cond_sel_OC
 
     if debug:
 
         for cond in cond_list_interaction:
 
-            print(f"{cond} {cond_mask[cond].sum()}")
+            print(f"{cond} {cond_mask[oc_cond][cond].sum()}")
 
         for cond in cond_list_interaction:
 
-            resp_plot = resp_stretch_cleaned[cond_mask[cond]]
+            resp_plot = resp_stretch_cleaned[cond_mask[oc_cond][cond]]
             for cycle_i in range(resp_plot.shape[0]):
                 plt.plot(resp_plot[cycle_i])
             plt.title(f"{cond}, n_cycle:{resp_plot.shape[0]}")
             plt.show()
 
             chan_i = 0
-            tf_plot = tf_allchan_stretch_cleaned[chan_i,cond_mask[cond]]
+            tf_plot = tf_allchan_stretch_cleaned[chan_i,cond_mask[oc_cond][cond]]
             plt.pcolormesh(np.median(tf_plot, axis=0))
             plt.title(f"{cond}, n_cycle:{resp_plot.shape[0]}")
             plt.show()
 
     #### add cond label to respfeature and save
     df_respfeature_label = []
+    df_psycho = []
+    oc_cond = 'noc'
 
     for cond in cond_list_interaction:
 
-        _df = resp_features_cleaned.iloc[cond_mask[cond]].copy()
+        _df_psycho = df_resp_cycle_cleaned[cond_mask[oc_cond][cond]][['trial', 'currentTrialCount', 'trialUnpleasantness', 'trialAnxiety', 'trialAnxietySource']]
+        _df_psycho['cycle_i'] = np.arange(_df_psycho.shape[0])
+        _df_psycho['sujet'] = [sujet] * _df_psycho.shape[0]
+        _df_psycho['cond'] = [cond] * _df_psycho.shape[0]
+        df_psycho.append(_df_psycho)
+
+        _df = resp_features_cleaned.iloc[cond_mask[oc_cond][cond]].copy()
         _df['sujet'] = [sujet] * _df.shape[0]
         _df['cond'] = [cond] * _df.shape[0]
 
         df_respfeature_label.append(_df)
 
     df_respfeature_label = pd.concat(df_respfeature_label)
+    df_psycho = pd.concat(df_psycho)
 
     path_export = os.path.join(path_precompute, 'RESP', 'respfeatures')
     df_respfeature_label.to_excel(os.path.join(path_export, f'{sujet}_respfeatures_cleaned_label_MECACO2INTER.xlsx'))
     df_resp_cycle_cleaned.to_excel(os.path.join(path_export, f"{sujet}_cycles_info_cleaned_MECACO2INTER.xlsx"))
+
+    path_export_psycho = os.path.join(path_precompute, 'PSYCHO', 'df_export')
+    df_psycho.to_excel(os.path.join(path_export_psycho, f'{sujet}_df_psycho.xlsx'))
     
     #### save stretch tf
     print(f'SAVE TF STRETCH', flush=True)
-    for cond in cond_list_interaction:
-        np.save(os.path.join(path_export_TF, f'{sujet}_{cond}_tf_allchan_stretch_MECACO2INTER.npy'), tf_allchan_stretch_cleaned[:,cond_mask[cond]])
+    for oc_cond in oc_list:
+        for cond in cond_list_interaction:
+            np.save(os.path.join(path_export_TF, f'{sujet}_{oc_cond}_{cond}_tf_allchan_stretch_MECACO2INTER.npy'), tf_allchan_stretch_cleaned[:,cond_mask[oc_cond][cond]])
 
     path_export_resp = os.path.join(path_precompute, 'RESP', 'MECACO2INTER')
-    for cond in cond_list_interaction:
-        np.save(os.path.join(path_export_resp, f'{sujet}_{cond}_stretch_resp_MECACO2INTER.npy'), resp_stretch_cleaned[cond_mask[cond]])
+    for oc_cond in oc_list:
+        for cond in cond_list_interaction:
+            np.save(os.path.join(path_export_resp, f'{sujet}_{oc_cond}_{cond}_stretch_resp_MECACO2INTER.npy'), resp_stretch_cleaned[cond_mask[oc_cond][cond]])
 
     #### remove
     os.chdir(path_memmap)
-    os.remove(f'memmap_{sujet}_tf_conv.npy')
     os.remove(f'memmap_{sujet}_rscore_param.npy')
     os.remove(f'memmap_{sujet}_tf_conv_norm.npy')
 
-    del data, resp, tf_allconv, tf_allconv_norm
+    del data, resp, tf_allconv_norm
 
 
 
@@ -557,6 +586,7 @@ def extract_power(sujet):
         return
 
     #### params
+    oc_list = ['noc', 'oc']
     chanlist, localist = get_chanlist(sujet)
 
     idx = np.arange(stretch_point_TF)
@@ -574,40 +604,56 @@ def extract_power(sujet):
 
     tf_allcond = {}
 
-    for cond in cond_list_interaction:
+    for oc_cond in oc_list:
 
-        _mat = np.load(os.path.join(path_load_data, f'{sujet}_{cond}_tf_allchan_stretch_MECACO2INTER.npy'))
-        tf_allcond[cond] = _mat
+        tf_allcond[oc_cond] = {}
+
+        for cond in cond_list_interaction:
+
+            _mat = np.load(os.path.join(path_load_data, f'{sujet}_{oc_cond}_{cond}_tf_allchan_stretch_MECACO2INTER.npy'))
+            tf_allcond[oc_cond][cond] = _mat
 
     #### extract
-    max_cycles = np.max([tf_allcond[cond].shape[1] for cond in cond_list_interaction])
+    max_list = []
+    for oc_cond_i, oc_cond in enumerate(oc_list):
 
-    Pxx = np.full( (len(cond_list_interaction), len(chanlist), len(bands), len(phases), max_cycles), np.nan, dtype=np.float32 )
+        for cond in cond_list_interaction:
 
-    for chan_i, chan_name in enumerate(chanlist):
+            max_list.append(tf_allcond[oc_cond][cond].shape[1])
+    
+    max_cycles = np.max(np.array(max_list))
 
-        print_advancement(chan_i, len(chanlist), steps=[25, 50, 75])
+    Pxx = np.full( (len(oc_list), len(cond_list_interaction), len(chanlist), len(bands), len(phases), max_cycles), np.nan, dtype=np.float32 )
 
-        for cond_i, cond in enumerate(cond_list_interaction):
+    for oc_cond_i, oc_cond in enumerate(oc_list):
 
-            ncycle = tf_allcond[cond].shape[1]
+        print(f"{oc_cond} extract")
 
-            for cycle_i in range(ncycle):
+        for chan_i, chan_name in enumerate(chanlist):
 
-                for band_i, (band, frex_sel) in enumerate(band_frex_sel.items()):
+            print_advancement(chan_i, len(chanlist), steps=[25, 50, 75])
 
-                    _tf = tf_allcond[cond][chan_i, cycle_i][frex_sel, :]  
+            for cond_i, cond in enumerate(cond_list_interaction):
 
-                    pxx_inspi = np.median(_tf[:, inspi_sel])
-                    pxx_expi  = np.median(_tf[:, expi_sel])
+                ncycle = tf_allcond[oc_cond][cond].shape[1]
 
-                    Pxx[cond_i, chan_i, band_i, 0, cycle_i] = pxx_inspi
-                    Pxx[cond_i, chan_i, band_i, 1,  cycle_i] = pxx_expi
+                for cycle_i in range(ncycle):
+
+                    for band_i, (band, frex_sel) in enumerate(band_frex_sel.items()):
+
+                        _tf = tf_allcond[oc_cond][cond][chan_i, cycle_i][frex_sel, :]  
+
+                        pxx_inspi = np.median(_tf[:, inspi_sel])
+                        pxx_expi  = np.median(_tf[:, expi_sel])
+
+                        Pxx[oc_cond_i, cond_i, chan_i, band_i, 0, cycle_i] = pxx_inspi
+                        Pxx[oc_cond_i, cond_i, chan_i, band_i, 1,  cycle_i] = pxx_expi
 
     da_Pxx = xr.DataArray(
         Pxx,
-        dims=("cond", "chan", "band", "phase", "cycle"),
+        dims=("oc_cond", "cond", "chan", "band", "phase", "cycle"),
         coords={
+            "oc_cond" : oc_list,
             "cond": cond_list_interaction,
             "chan": chanlist,
             "band": bands,

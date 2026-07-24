@@ -499,19 +499,6 @@ def explore_data():
 
         plt.close('all')
 
-    #### extract count cycle allsujet
-    df_count_cycle_allsujet = pd.DataFrame()
-    
-    #sujet_i, sujet = 0, 'NS131_02'
-    for sujet_i, sujet in enumerate(sujet_list): 
-
-        os.chdir(os.path.join(path_results, 'respi', 'count_cycles'))
-        _df_add = pd.read_excel(f"{sujet}_count_cycles.xlsx")
-        df_count_cycle_allsujet = pd.concat([df_count_cycle_allsujet, _df_add])
-        df_count_cycle_allsujet = df_count_cycle_allsujet.drop(columns=['Unnamed: 0'])
-
-    df_count_cycle_allsujet.to_excel('ALLSUJET_count_cycle.xlsx')
-
 
     #### extract pressure for all
 

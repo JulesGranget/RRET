@@ -868,7 +868,7 @@ if __name__ == '__main__':
     #### PRECOMPUTE
     norm_param = 'rscore'
     
-    #sujet = sujet_list[0]
+    #sujet = sujet_list[1]
     for sujet in sujet_list:
 
         precompute_tf_allconv_from_epoch(sujet, norm_param)

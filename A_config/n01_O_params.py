@@ -20,16 +20,22 @@ srate = 500
 sujet_list = ['NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208',
               'NS211',  'NS213',  'NS215']
 
+sujet_anonym_dict = {'NS131_02' : 'A', 'NS202' : 'B', 'NS203' : 'C', 'NS205' : 'D', 
+                     'NS206' : 'E', 'NS208' : 'F', 'NS211' : 'G',  'NS213' : 'H',  
+                     'NS215' : 'I'}
+
 sujet_list_interaction_analysis = ['NS131_02', 'NS206', 'NS211']
 
 
 ROI_short_list = ['Amygdala', 'insula-ant', 'lateralorbitofrontal', 'Hippocampus', 'insula-pos', 'medialorbitofrontal', 'insula', 'postcentral',
                       'precentral', 'Brain-Stem']
+ROI_short_list_MECACO2 = ['insula-ant', 'lateralorbitofrontal', 'Amygdala', 'Hippocampus', 'medialorbitofrontal', 'postcentral']
+
 sujet_thresh = 3
 
 
 cond_list = ['VS', 'CHARGE']
-cond_list_interaction = ['ctrl', 'CO2', 'MECA', 'BOTH_MC']
+cond_list_interaction = ['ctrl', 'CO2', 'MECA', 'BOTH']
 
 
 sujet_list_allcond = {'rsp_ctrl' : ['NS086_02', 'NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208', 'NS211', 'NS213', 'NS215'], 
@@ -72,6 +78,8 @@ path_memmap = os.path.join(path_general, 'memmap')
 path_paper_figure_export = os.path.join(path_results, 'figure_paper')
 
 os.chdir(init_workdir)
+
+
 
 
 
