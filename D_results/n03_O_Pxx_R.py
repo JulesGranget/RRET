@@ -604,77 +604,81 @@ def export_res_Pxx_MECACO2_REG():
     ROI_title = 'AMYGDALA'
     band_list = list(freq_band_dict.keys())
 
-    LMM_param_list = ['oc_ratio', 'condMECA', 'condCO2', 'condBOTH', 
-           'condMECA:oc_ratio', 'condCO2:oc_ratio', 'condBOTH:oc_ratio']
+    LMM_param_dict = {  'full' : ['oc_ratio', 'condMECA', 'condCO2', 'condBOTH', 
+                                'condMECA:oc_ratio', 'condCO2:oc_ratio', 'condBOTH:oc_ratio'],
+                        'COND' : ['condMECA', 'condCO2', 'condBOTH'],
+                        'OC_RATIO' : ['oc_ratio', 'condMECA:oc_ratio', 'condCO2:oc_ratio', 'condBOTH:oc_ratio'],}
 
-    fig = make_subplots(
-        rows=len(freq_band_dict),
-        cols=1,
-        shared_xaxes=False,
-        subplot_titles=band_list
-    )
+    for effect_type in LMM_param_dict:
 
-    for r, band in enumerate(band_list, start=1):
-
-        _df_plot = df_R_Pxx.query(f"band == '{band}' and ROI == '{ROI_sel}' and term != '(Intercept)'").copy()
-
-        _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
-
-        for phase_cycle in _df_plot["phase_cycle"].unique():
-
-            df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
-
-            fig.add_bar(
-                x=df_term["term"],
-                y=df_term["estimate"],
-                name=phase_cycle,
-                text=df_term["sig"],
-                textposition="outside",
-                marker_color=color_map[phase_cycle],
-                row=r,
-                col=1
-            )
-
-            y_max = _df_plot["estimate"].abs().max()
-
-            margin = y_max * 0.50   # 15% extra space
-
-            fig.update_yaxes(
-                range=[-y_max - margin, y_max + margin],
-                row=r,
-                col=1
-            )
-
-            fig.update_xaxes(
-                categoryorder="array",
-                categoryarray=LMM_param_list,
-                row=r,
-                col=1
-            )
-
-        fig.update_layout(
-        title=f"{ROI_title} all band",
-        template="simple_white",
-        barmode="group",
-        yaxis_title="estimate",
-        legend_title="phase_cycle",
-        height=320 * len(LMM_param_list),
-        width=500,
+        fig = make_subplots(
+            rows=len(freq_band_dict),
+            cols=1,
+            shared_xaxes=False,
+            subplot_titles=band_list
         )
 
-    fig.update_xaxes(tickangle=-45)
+        for r, band in enumerate(band_list, start=1):
 
-    # fig.show()
+            _df_plot = df_R_Pxx.query(f"band == '{band}' and ROI == '{ROI_sel}' and term in {LMM_param_dict[effect_type]}").copy()
 
-    outdir = os.path.join(path_results, "LMM", "MECACO2", "fig")
-    fig.write_html(
-        os.path.join(outdir, f"{ROI_title}_{band}_REG_MECACO2_threshROI_LMM.html"),
-        include_plotlyjs="cdn"
-    )
+            _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
-    fig.write_image(
-        os.path.join(path_paper_figure_export, f"{ROI_title}_{band}_REG_MECACO2_threshROI_LMM.svg")
-    )
+            for phase_cycle in _df_plot["phase_cycle"].unique():
+
+                df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
+
+                fig.add_bar(
+                    x=df_term["term"],
+                    y=df_term["estimate"],
+                    name=phase_cycle,
+                    text=df_term["sig"],
+                    textposition="outside",
+                    marker_color=color_map[phase_cycle],
+                    row=r,
+                    col=1
+                )
+
+                y_max = _df_plot["estimate"].abs().max()
+
+                margin = y_max * 0.50   # 15% extra space
+
+                fig.update_yaxes(
+                    range=[-y_max - margin, y_max + margin],
+                    row=r,
+                    col=1
+                )
+
+                fig.update_xaxes(
+                    categoryorder="array",
+                    categoryarray=LMM_param_dict[effect_type],
+                    row=r,
+                    col=1
+                )
+
+            fig.update_layout(
+            title=f"{ROI_title} all band",
+            template="simple_white",
+            barmode="group",
+            yaxis_title="estimate",
+            legend_title="phase_cycle",
+            height=500 * len(LMM_param_dict[effect_type]),
+            width=400,
+            )
+
+        fig.update_xaxes(tickangle=-45)
+
+        # fig.show()
+
+        outdir = os.path.join(path_results, "LMM", "MECACO2", "fig")
+        fig.write_html(
+            os.path.join(outdir, f"{ROI_title}_{effect_type}_REG_MECACO2_threshROI_LMM.html"),
+            include_plotlyjs="cdn"
+        )
+
+        fig.write_image(
+            os.path.join(path_paper_figure_export, f"{ROI_title}_{effect_type}_REG_MECACO2_threshROI_LMM.svg")
+        )
 
     #### export df data
     df_export = df_R_Pxx.query(f"ROI == '{ROI_sel}' and term != '(Intercept)'")

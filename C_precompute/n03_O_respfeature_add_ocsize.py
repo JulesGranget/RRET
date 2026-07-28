@@ -57,7 +57,7 @@ def extract_oc_size_general(sujet):
     #### extract
     df_oc = []
 
-    #cond = conditions[2]
+    #cond = conditions[-1]
     for cond in conditions:
 
         os.chdir(os.path.join(path_precompute, 'RESP', 'session'))
@@ -122,6 +122,24 @@ def extract_oc_size_general(sujet):
                 plt.hlines([median_inspi_trough], xmin=0, xmax=stretch_point_TF, colors='b')
                 plt.scatter([oc_top_i], sig[oc_top_i], color='r')
                 plt.plot(time_vec,sig_diff)
+                plt.show()
+
+            for cycle_i in range(resp_stretch.shape[0]): 
+            
+                sig = resp_stretch[cycle_i][:-1]
+                sig_diff = np.diff(resp_stretch[cycle_i])
+                start_inspi_dec = np.argmin(sig_diff[:int(stretch_point_TF/4)])
+                start_inspi_asc = np.argmax(sig_diff[int(stretch_point_TF/4):int(stretch_point_TF/2)]) + int(stretch_point_TF/4)
+
+                oc_top_i = np.where(sig_diff[start_inspi_dec:] > 0)[0][0] + start_inspi_dec
+
+                median_inspi_trough = np.median(sig[start_inspi_dec:start_inspi_asc])
+
+                time_vec = np.arange(sig.size)
+                plt.plot(time_vec, sig)
+                plt.vlines([int(stretch_point_TF/2)], ymin=sig.min(), ymax=sig.max(), colors='r')
+                plt.hlines([median_inspi_trough], xmin=0, xmax=stretch_point_TF, colors='b')
+                plt.scatter([oc_top_i], sig[oc_top_i], color='r')
                 plt.show()
 
         _df_oc = pd.DataFrame({'sujet' : [sujet]*len(oc_ratio), 'cond' : [cond]*len(oc_ratio), 'cycle_i' : np.arange(len(oc_ratio)).tolist(), 'oc_ratio' : oc_ratio, 'oc_val' : oc_val})

@@ -141,7 +141,7 @@ def export_resp_mean(sujet):
         plt.title(f"{sujet} {time_phase} median allcond")
         plt.legend()
         plt.tight_layout()
-        # plt.show()
+        plt.show()
         fig_summary_mean.savefig(f"summary_{sujet}_{time_phase}.jpeg")
 
     plt.close('all')

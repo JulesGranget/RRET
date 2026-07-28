@@ -336,6 +336,10 @@ def export_plot_oc_stats():
     # plt.show()
 
     fig_median_oc, ax = plt.subplots(figsize=(10,8))
+    sns.swarmplot(df_median_oc.query(f"cond in ['oc_ctrl', 'oc_chl']"), x='cond', y='oc_ratio', hue='sujet', ax=ax, size=10, order=['oc_ctrl', 'oc_chl'])
+    # plt.show()
+
+    fig_median_oc, ax = plt.subplots(figsize=(10,8))
 
     sns.swarmplot(
         data=df_median_oc,

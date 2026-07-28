@@ -541,7 +541,7 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     df_resp_cycle_cleaned.to_excel(os.path.join(path_export, f"{sujet}_cycles_info_cleaned_MECACO2INTER.xlsx"))
 
     path_export_psycho = os.path.join(path_precompute, 'PSYCHO', 'df_export')
-    df_psycho.to_excel(os.path.join(path_export_psycho, f'{sujet}_df_psycho.xlsx'))
+    df_psycho.to_excel(os.path.join(path_export_psycho, f'{sujet}_df_psycho_MECACO2BOTH.xlsx'))
     
     #### save stretch tf
     print(f'SAVE TF STRETCH', flush=True)
