@@ -199,6 +199,8 @@ def export_plot_oc_resp():
     filename_savefig = f"fig03d_OC_example.svg"
     fig_oc_example.savefig(os.path.join(path_paper_figure_export, filename_savefig))
 
+    
+
 
 
 
@@ -302,6 +304,7 @@ def export_plot_oc_stats():
 
     df_oc_allsujet = pd.concat(df_oc_allsujet).drop(columns=['Unnamed: 0'])
     df_median_oc = df_oc_allsujet.groupby(['sujet', 'cond']).median().reset_index()
+    df_median_oc_patientlinked = df_oc_allsujet.groupby(['sujet', 'cond']).median('oc_ratio').query(f"cond in ['oc_ctrl', 'oc_chl']").reset_index().drop(columns=['cycle_i', 'oc_val'])
 
     #### sujetwise
     fig_allsujet_oc, ax = plt.subplots(figsize=(10,8))
@@ -331,25 +334,12 @@ def export_plot_oc_stats():
     posthoc['friedman_p'] = [p] * posthoc.shape[0]
     posthoc['friedman_statval'] = [statfried] * posthoc.shape[0]
 
-    fig_median_oc, ax = plt.subplots(figsize=(10,8))
-    sns.swarmplot(df_median_oc, x='cond', y='oc_ratio', hue='sujet', ax=ax, size=10)
+    # fig_median_oc, ax = plt.subplots(figsize=(10,8))
+    # sns.swarmplot(df_median_oc, x='cond', y='oc_ratio', hue='sujet', ax=ax, size=10)
     # plt.show()
 
     fig_median_oc, ax = plt.subplots(figsize=(10,8))
     sns.swarmplot(df_median_oc.query(f"cond in ['oc_ctrl', 'oc_chl']"), x='cond', y='oc_ratio', hue='sujet', ax=ax, size=10, order=['oc_ctrl', 'oc_chl'])
-    # plt.show()
-
-    fig_median_oc, ax = plt.subplots(figsize=(10,8))
-
-    sns.swarmplot(
-        data=df_median_oc,
-        x='cond',
-        y='oc_ratio',
-        hue='sujet',
-        size=10,
-        ax=ax
-    )
-
     # plt.show()
 
     path_savefig = os.path.join(path_results, 'respi', 'oc_ratio', 'plot')
@@ -362,6 +352,49 @@ def export_plot_oc_stats():
     filename_savedf = f"df_stat_oc.xlsx"
     posthoc.to_excel(os.path.join(path_savefig, filename_savedf))
 
+    #### patient linked
+    df_plot = df_median_oc_patientlinked
+
+    fig_patientlinked, ax = plt.subplots(figsize=(6, 8))
+
+    sns.barplot(
+        data=df_plot,
+        x="cond",
+        y="oc_ratio",
+        order=["oc_ctrl", "oc_chl"],
+        estimator=np.median,
+        errorbar=None,
+        palette={"oc_ctrl": "steelblue", "oc_chl": "orange"},
+        alpha=0.4,
+        ax=ax,
+        legend=False,
+    )
+
+    sns.pointplot(
+        data=df_plot,
+        x="cond",
+        y="oc_ratio",
+        hue="sujet",
+        order=["oc_ctrl", "oc_chl"],
+        estimator=np.median,
+        errorbar=None,
+        dodge=False,
+        markers="o",
+        linestyles="-",
+        linewidth=1.5,
+        alpha=0.7,
+        palette=["gray"] * df_plot["sujet"].nunique(),
+        ax=ax,
+        legend=False,
+    )
+
+    # plt.show()
+
+    path_savefig = os.path.join(path_results, 'respi', 'oc_ratio', 'plot')
+    filename_savefig = f"psycho_patientlinked.png"
+    fig_patientlinked.savefig(os.path.join(path_savefig, filename_savefig))
+
+    plt.close('all')
 
 
 

@@ -40,7 +40,7 @@ def export_allpatient_anat():
 
         anat_allpatient = pd.concat(anat_allpatient)
         
-        all_df.to_excel("anatomy_allpatient.xlsx")
+        anat_allpatient.to_excel("anatomy_allpatient.xlsx")
 
 
 
@@ -949,24 +949,25 @@ def tf_relative_allpatient():
         plt.close('all')
 
             #### plot lateral median
-        med_lines = np.stack([np.median(_tf_allsujet_median[:,:,:int(stretch_point_TF/2)], axis=-1), np.median(_tf_allsujet_median[:,:,int(stretch_point_TF/2):], axis=-1)])
-        _vlim = np.abs([np.min(med_lines), np.max(med_lines)]).max()
+        med_lines = np.median(_tf_allsujet_median[:,:,:int(stretch_point_TF/2)], axis=-1)
+        med_lines_smoothed = scipy.signal.savgol_filter(med_lines, window_length=20, polyorder=2, axis=-1)
+            
+        _vlim = np.abs([np.min(med_lines_smoothed), np.max(med_lines_smoothed)]).max()
 
-        fig, axs = plt.subplots(ncols=len(test_conditions), figsize=(8,5))
+        fig, ax = plt.subplots(figsize=(5,8))
         
         for cond_i, cond in enumerate(test_conditions):
         
-            ax = axs[cond_i]
-            ax.plot(med_lines[0, cond_i], frex, color='b')
-            ax.plot(med_lines[1, cond_i], frex, color='r')
+            ax.plot(med_lines_smoothed[cond_i], frex, label=cond)
             ax.set_yscale('log')
             ax.set_xlim(-_vlim, _vlim)
             
             ax.set_yticks(ticks_freq)
             ax.set_yticklabels([str(t) for t in ticks_freq])
 
-            ax.set_title(f"{cond}")
+            ax.set_title(f"inspi")
 
+        plt.legend()
         plt.suptitle(f"{loca_sel} s({len(_patient_list_unique)})")
 
         # plt.show()
