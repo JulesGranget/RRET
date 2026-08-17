@@ -67,6 +67,8 @@ def tf_absolute_allpatient():
     df_loca_allpatient = pd.read_excel('df_loca_allsujet_removetag.xlsx').query(f"SOZ != 1 and Spike != 1 and Out != 1 and NotFound != 1 and BAD != 1 and sujet in {sujet_list_interaction_analysis}")
     localist_unique = ROI_short_list_MECACO2
     oc_cond_list = ['noc', 'oc']
+    oc_cond_list_corresp_oc = {'noc' : 'no-O', 'oc' : 'O'}
+    oc_cond_list_corresp_dys = {'ctrl' : 'RB', 'MECA' : 'MECA', 'CO2' : 'CO2', 'BOTH' : 'MECA+CO2'}
 
     ticks_freq = [2, 8, 12, 30, 50, 60, 150]
     percentile_plot = [1,99]
@@ -118,12 +120,21 @@ def tf_absolute_allpatient():
                 ax.set_yticks(ticks_freq)
                 ax.set_yticklabels([str(t) for t in ticks_freq])
 
+                if oc_cond_sel == 'oc':
+                    ax.set_xlabel("Phase", fontsize=15)
+                if cond == 'ctrl':
+                    ax.set_ylabel("Frequency", fontsize=15)
+    
+                ax.tick_params(axis="x", labelsize=11)
+                ax.tick_params(axis="y", labelsize=11)
+
                 if cond_i == 0:
-                    ax.set_ylabel(oc_cond_sel)
+                    ax.set_ylabel(oc_cond_list_corresp_oc[oc_cond_sel])
                 if oc_cond_sel_i == 1:
                     ax.set_xlabel('Phase')
                 if oc_cond_sel_i == 0:
-                    ax.set_title(f"{cond} c{int(_ncycle_tot[oc_cond_sel_i, cond_i])}")
+                    ax.set_title(f"{oc_cond_list_corresp_dys[cond]}")
+                    # ax.set_title(f"{oc_cond_list_corresp_dys[cond]} c{int(_ncycle_tot[oc_cond_sel_i, cond_i])}")
 
         cbar = fig.colorbar(pcm, ax=axs, orientation="vertical", fraction=0.02, pad=0.04)
         plt.suptitle(f"{loca_sel} s({len(_patient_list_unique)})")
@@ -196,12 +207,21 @@ def tf_absolute_allpatient():
                 ax.set_yticks(ticks_freq)
                 ax.set_yticklabels([str(t) for t in ticks_freq])
 
+                if oc_cond_sel == 'oc':
+                    ax.set_xlabel("Phase", fontsize=15)
+                if cond == 'ctrl':
+                    ax.set_ylabel("Frequency", fontsize=15)
+    
+                ax.tick_params(axis="x", labelsize=11)
+                ax.tick_params(axis="y", labelsize=11)
+
                 if cond_i == 0:
-                    ax.set_ylabel(oc_cond_sel)
+                    ax.set_ylabel(oc_cond_list_corresp_oc[oc_cond_sel])
                 if oc_cond_sel_i == 1:
                     ax.set_xlabel('Phase')
                 if oc_cond_sel_i == 0:
-                    ax.set_title(f"{cond} c{int(_ncycle_tot[oc_cond_sel_i, cond_i])}")
+                    ax.set_title(f"{oc_cond_list_corresp_dys[cond]}")
+                    # ax.set_title(f"{oc_cond_list_corresp_dys[cond]} c{int(_ncycle_tot[oc_cond_sel_i, cond_i])}")
 
         cbar = fig.colorbar(pcm, ax=axs, orientation="vertical", fraction=0.02, pad=0.04)
         plt.suptitle(f"{loca_sel} s({len(_patient_list_unique)})")
@@ -211,6 +231,11 @@ def tf_absolute_allpatient():
             #### save
         os.chdir(os.path.join(path_results, 'TF', 'MECACO2', 'absolute'))
         fig.savefig(f"JET_allsujet_{loca_sel}_TF.jpg")
+
+        if loca_sel == 'Amygdala':
+            os.chdir(os.path.join(path_paper_figure_export))
+            fig.savefig(f"fig07a_AMY_TF.svg")
+
         plt.close('all')
 
     joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(plot_allsujet_loca)(loca_sel_i, loca_sel) for loca_sel_i, loca_sel in enumerate(localist_unique))

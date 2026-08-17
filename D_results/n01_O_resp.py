@@ -89,16 +89,11 @@ def export_resp_mean(sujet):
     #### load
     os.chdir(os.path.join(path_precompute, 'RESP', 'session'))
     
-    time_phase_list = ['pre', 'post']
     cycles_allcond = {}
     
     for cond in conditions:
 
-        cycles_allcond[cond] = {}
-
-        for time_phase in time_phase_list:
-
-            cycles_allcond[cond][time_phase] = np.load(f"{sujet}_{cond}_stretch_resp_{time_phase}.npy")
+        cycles_allcond[cond] = np.load(f"{sujet}_{cond}_stretch_resp_post.npy")
     
     #### plot all cycles
     os.chdir(os.path.join(path_results, 'respi', 'session'))
@@ -106,19 +101,17 @@ def export_resp_mean(sujet):
     time_vec = np.arange(stretch_point_TF)
 
     for cond in conditions:
-
-        for time_phase in time_phase_list: 
     
-            data_plot = cycles_allcond[cond][time_phase]
-            fig_resp_control, ax = plt.subplots()
-            for cycle_i in range(data_plot.shape[0]):  
-                plt.plot(time_vec, data_plot[cycle_i])
-            plt.title(f"{sujet} {time_phase} / {cond} / n:{data_plot.shape[0]}")
-            plt.tight_layout()
-            # plt.show()
-            fig_resp_control.savefig(f"{sujet}_{cond}_{time_phase}_allcycles.jpeg")
+        data_plot = cycles_allcond[cond]
+        fig_resp_control, ax = plt.subplots()
+        for cycle_i in range(data_plot.shape[0]):  
+            plt.plot(time_vec, data_plot[cycle_i])
+        plt.title(f"{sujet} / {cond} / n:{data_plot.shape[0]}")
+        plt.tight_layout()
+        # plt.show()
+        fig_resp_control.savefig(f"{sujet}_{cond}_allcycles.jpeg")
 
-            plt.close('all')
+        plt.close('all')
 
     
     #### plot mean
@@ -132,17 +125,50 @@ def export_resp_mean(sujet):
                             'oc_chl' : {'linestyle' : '-', 'color' : 'b'}
                             }
 
-    for time_phase in time_phase_list: 
+    fig_summary_mean, ax = plt.subplots()
+    for cond in conditions:
+        data_plot = cycles_allcond[cond]
+        plt.plot(time_vec, np.median(data_plot, axis=0), label=f"{cond} {data_plot.shape[0]}", linestyle=label_line_cond_dict[cond]['linestyle'], color=label_line_cond_dict[cond]['color'])
+    plt.title(f"{sujet} median allcond")
+    plt.legend()
+    plt.tight_layout()
+    # plt.show()
+    fig_summary_mean.savefig(f"summary_{sujet}.jpeg")
 
-        fig_summary_mean, ax = plt.subplots()
+    if sujet == 'NS131_02':
+
+        os.chdir(os.path.join(path_results, 'figure_paper'))
+
+        vlim = []
+
         for cond in conditions:
-            data_plot = cycles_allcond[cond][time_phase]
-            plt.plot(time_vec, np.median(data_plot, axis=0), label=f"{cond} {data_plot.shape[0]}", linestyle=label_line_cond_dict[cond]['linestyle'], color=label_line_cond_dict[cond]['color'])
-        plt.title(f"{sujet} {time_phase} median allcond")
+
+            _med = np.median(cycles_allcond[cond], axis=0)
+            vlim.append([_med.min(), _med.max()])
+
+        vmin, vmax = np.array(vlim)[:,0].min()+np.array(vlim)[:,0].min()*0.1, np.array(vlim)[:,1].max() + np.array(vlim)[:,1].max()*0.1
+
+        fig_summary_mean, ax = plt.subplots(figsize=(7,5))
+        for cond in conditions:
+            data_plot = cycles_allcond[cond]
+            plt.plot(time_vec, np.median(data_plot, axis=0), label=f"{conditions_corresp[cond]} c({data_plot.shape[0]})", linestyle=label_line_cond_dict[cond]['linestyle'], color=label_line_cond_dict[cond]['color'])
+
+        ax.tick_params(axis="x", labelsize=12)
+        ax.tick_params(axis="y", labelsize=12)
+
+        ax.vlines(int(stretch_point_TF/2), ymin=vmin, ymax=vmax, color='k')
+
+        ax.set_ylabel('r-zscore', fontsize=16)
+        ax.set_xlabel('phase', fontsize=16)
+
+        plt.ylim(vmin, vmax)
+
+        plt.title(f"patient {sujet_anonym_dict[sujet]} median allcond")
         plt.legend()
         plt.tight_layout()
-        plt.show()
-        fig_summary_mean.savefig(f"summary_{sujet}_{time_phase}.jpeg")
+
+        # plt.show()
+        fig_summary_mean.savefig(f"fig02a_patient_example_{sujet}.svg")
 
     plt.close('all')
 
@@ -219,8 +245,6 @@ def export_respi_allsujet():
     os.chdir(os.path.join(path_results, 'respi', 'plot_median'))
     fig_cond_allsujet.savefig(f"allsujet_respi_median.png")
 
-    fig_cond_allsujet.savefig(os.path.join(path_paper_figure_export, f"fig03c_allsujet_respi_median.svg"))
-
     plt.close('all')
 
     #### median
@@ -231,18 +255,26 @@ def export_respi_allsujet():
         ymin.append(np.median(resp_data[:,cond_i], axis=0).min())
         ymax.append(np.median(resp_data[:,cond_i], axis=0).max())
 
-    ymin, ymax = np.array(ymin).min(), np.array(ymax).max()
+    ymin, ymax = np.array(ymin).min()+np.array(ymin).min()/10, np.array(ymax).max()+np.array(ymax).max()/10
 
-    fig_median, ax = plt.subplots()
+    fig_median, ax = plt.subplots(figsize=(7,5))
 
     #cond = 'VS'
     for cond_i, cond in enumerate(conditions):
 
-        ax.plot(time_vec, np.median(resp_data[:,cond_i], axis=0), color=label_line_cond_dict[cond]['color'], linestyle=label_line_cond_dict[cond]['linestyle'], label=cond)
+        ax.plot(time_vec, np.median(resp_data[:,cond_i], axis=0), color=label_line_cond_dict[cond]['color'], linestyle=label_line_cond_dict[cond]['linestyle'], label=f"{conditions_corresp[cond]}")
 
-    ax.vlines(stretch_point_TF/2, ymin=ymin, ymax=ymax, color='r')
+    ax.vlines(stretch_point_TF/2, ymin=ymin, ymax=ymax, color='k')
+
+    ax.tick_params(axis="x", labelsize=12)
+    ax.tick_params(axis="y", labelsize=12)
+
+    ax.set_ylabel('r-zscore', fontsize=16)
+    ax.set_xlabel('phase', fontsize=16)
+    
     plt.ylim(ymin, ymax)
     plt.title('median')
+    plt.tight_layout()
     plt.legend()
 
     # fig_median.show()
@@ -250,7 +282,7 @@ def export_respi_allsujet():
     os.chdir(os.path.join(path_results, 'respi', 'plot_median'))
     fig_median.savefig(f"respi_median.png")
 
-    fig_median.savefig(os.path.join(path_paper_figure_export, f"fig03b_respi_median.svg"))
+    fig_median.savefig(os.path.join(path_paper_figure_export, f"fig02b_respi_median.svg"))
 
     
     

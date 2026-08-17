@@ -54,8 +54,7 @@ def export_reg_PREPOST_example():
     df_reg_prepost = pd.read_excel(filename)
     cond_list_sel = ['oc_ctrl', 'oc_chl']
 
-    #### plot
-
+    #### plot all patient
     for cond in cond_list_sel:
     
         df_plot = df_reg_prepost.query(f"cond == '{cond}'")[['sujet', 'pre_total_amplitude', 'post_oc_ratio']]
@@ -74,6 +73,178 @@ def export_reg_PREPOST_example():
         plt.savefig(filename)
 
         plt.close('all')
+
+    #### plot example pre post
+    cond_prepost_list = ['oc_ctrl', 'oc_chl']
+
+    i_to_plot_paper = {'oc_ctrl' : 23, 'oc_chl' : 27}
+    index_search = {'oc_ctrl' : 20, 'oc_chl' : 20}
+
+    sujet_sel_ex_reg = ['NS203', 'NS211']
+
+    #cond = 'oc_chl'
+    for cond in cond_prepost_list:
+
+        df_prepost_example = df_reg_prepost.query(f"cond == '{cond}' and sujet in {sujet_sel_ex_reg}").reset_index(drop=True)
+
+        cycle_i_list = []
+
+        for row_i, row in df_prepost_example.iterrows():
+
+            if row_i == 0:
+                pre_sujet = row['sujet']
+                add_cycle_i = 0
+            else:
+                if pre_sujet != row['sujet']:
+                    add_cycle_i = 0
+                    pre_sujet = row['sujet']
+                else:
+                    add_cycle_i += 1
+
+            cycle_i_list.append(add_cycle_i)
+
+        df_prepost_example['cycle_i'] = cycle_i_list
+
+        prepost_norm = df_prepost_example['pre_total_amplitude'] / df_prepost_example['pre_total_amplitude'].max()
+        ocratio_norm = 1 - df_prepost_example['post_oc_ratio'] / df_prepost_example['post_oc_ratio'].max()
+
+        score_prepost = (prepost_norm + ocratio_norm).sort_values(ascending=False)
+        score_prepost_i_list = np.concat([score_prepost.index[:index_search[cond]].values, score_prepost.index[-index_search[cond]:].values])
+
+        load_df = df_prepost_example.loc[score_prepost_i_list][['sujet', 'cond']]
+        score_prepost_i_list = load_df.sort_values('sujet', ascending=True).index.values
+
+        load_dict = {}
+
+        for row_i, row in load_df.iterrows():
+
+            _sujet, _cond = row["sujet"], row["cond"]
+
+            _ = load_dict.setdefault(_sujet, {})
+            _ = load_dict[_sujet].setdefault(_cond, {})
+
+        path_load_resp = os.path.join(path_precompute, 'RESP', 'session')
+
+        vlim = []
+
+        for sujet in load_dict:
+
+            for cond in load_dict[sujet]:
+
+                _pre_stretch = np.load(os.path.join(path_load_resp, f"{sujet}_{cond}_stretch_resp_pre.npy"))
+                _post_stretch = np.load(os.path.join(path_load_resp, f"{sujet}_{cond}_stretch_resp_post.npy"))
+                load_dict[sujet][cond]['pre'] = _pre_stretch
+                load_dict[sujet][cond]['post'] = _post_stretch
+
+                vlim.append([_pre_stretch.min(), _pre_stretch.max(), _post_stretch.min(), _post_stretch.max()])
+
+        vlim = np.abs(np.array(vlim)).max()
+
+        for cycle_i, cycle_i_val in enumerate(score_prepost_i_list):
+
+            if cycle_i in [0,1]:
+                continue
+
+            _row_0 = df_prepost_example.loc[score_prepost_i_list[cycle_i-1]]
+            _row_1 = df_prepost_example.loc[cycle_i_val]
+            
+            _sujet_0, _cond_0, cycle_i_mat0 = _row_0['sujet'], _row_0['cond'], _row_0['cycle_i']
+            _sujet_1, _cond_1, cycle_i_mat1 = _row_1['sujet'], _row_1['cond'], _row_1['cycle_i']
+
+            stretch_cycle_0 = np.concat([load_dict[_sujet_0][_cond_0]['pre'], load_dict[_sujet_0][_cond_0]['post']], axis=1)[cycle_i_mat0]
+            stretch_cycle_1 = np.concat([load_dict[_sujet_1][_cond_1]['pre'], load_dict[_sujet_1][_cond_1]['post']], axis=1)[cycle_i_mat1]
+
+            plt.plot(stretch_cycle_0)
+            plt.plot(stretch_cycle_1)
+            plt.title(f"{_sujet_0}, {_sujet_1}, {_cond}, iteration{cycle_i}")
+            plt.ylim(-vlim, vlim)
+            plt.show()
+
+        #### save paper
+        cycle_i, cycle_i_val = i_to_plot_paper[cond], score_prepost_i_list[i_to_plot_paper[cond]]
+
+        _row_0 = df_prepost_example.loc[score_prepost_i_list[cycle_i-1]]
+        _row_1 = df_prepost_example.loc[cycle_i_val]
+        
+        _sujet_0, _cond_0, cycle_i_mat0 = _row_0['sujet'], _row_0['cond'], _row_0['cycle_i']
+        _sujet_1, _cond_1, cycle_i_mat1 = _row_1['sujet'], _row_1['cond'], _row_1['cycle_i']
+
+        stretch_cycle_0 = np.concat([load_dict[_sujet_0][_cond_0]['pre'], load_dict[_sujet_0][_cond_0]['post']], axis=1)[cycle_i_mat0]
+        stretch_cycle_1 = np.concat([load_dict[_sujet_1][_cond_1]['pre'], load_dict[_sujet_1][_cond_1]['post']], axis=1)[cycle_i_mat1]
+
+        vlim = np.abs([stretch_cycle_0, stretch_cycle_1]).max()*1.2
+
+        fig, ax = plt.subplots()
+
+        ax.plot(stretch_cycle_0)
+        ax.plot(stretch_cycle_1)
+
+        ax.vlines([int(stretch_point_TF/2), stretch_point_TF+int(stretch_point_TF/2)], ymin=-vlim, ymax=vlim, color='k')
+
+        ax.set_title(f"{_sujet_0}, {_sujet_1}, {_cond}, iteration{cycle_i}")
+        ax.set_ylim(-vlim, vlim)
+
+        ax.set_ylabel('r-zscore')
+        ax.set_xlabel('Phase')
+
+        ax.xaxis.label.set_size(15)
+        ax.yaxis.label.set_size(15)
+    
+        ax.tick_params(axis="x", labelsize=15)
+        ax.tick_params(axis="y", labelsize=15)
+
+        ax.set_xticks(np.arange(0,stretch_point_TF*2,50), 
+                      labels=np.concat([np.arange(0,stretch_point_TF,50), np.arange(0,stretch_point_TF,50)]))
+
+        plt.tight_layout()
+
+        # plt.show()
+
+        fig.savefig(os.path.join(path_paper_figure_export, f"fig06a_example_{cond}.svg"))
+
+    #### plot lm patient wise
+    for sujet in sujet_list:
+
+        df_plot = df_reg_prepost.query(f"sujet == '{sujet}' and cond in ['oc_ctrl', 'oc_chl']")
+        df_plot['cond'] = df_plot['cond'].replace({'oc_ctrl' : 'O', 'oc_chl' : 'O+Ch'})
+        g = sns.lmplot(df_plot, x='pre_total_amplitude', y='post_oc_ratio', hue='cond', ci=False)
+        plt.title(f"{sujet}")
+        plt.tight_layout()
+
+        if sujet == 'NS211':
+
+            ax = g.ax
+            ax.set_xlabel("preA", fontsize=15)
+            ax.set_ylabel("OR", fontsize=15)
+
+            ax.tick_params(axis="x", labelsize=15)
+            ax.tick_params(axis="y", labelsize=15)
+
+            plt.tight_layout()
+
+            plt.savefig(os.path.join(path_paper_figure_export, f"fig06b_patient_reg_cond.svg"))
+
+        plt.show()
+
+    #### plot allpatient
+    df_plot = df_reg_prepost.query(f"cond in ['oc_ctrl', 'oc_chl']")
+    df_plot['cond'] = df_plot['cond'].replace({'oc_ctrl' : 'O', 'oc_chl' : 'O+Ch'})
+    g = sns.lmplot(df_plot, x='pre_total_amplitude', y='post_oc_ratio', hue='cond', ci=False, scatter_kws={"alpha": 0.3})
+    ax = g.ax
+    ax.set_xlabel("preA", fontsize=15)
+    ax.set_ylabel("OR", fontsize=15)
+
+    ax.tick_params(axis="x", labelsize=15)
+    ax.tick_params(axis="y", labelsize=15)
+
+    plt.tight_layout()
+    plt.title(f"allpatient")
+
+    plt.savefig(os.path.join(path_paper_figure_export, f"fig06c_allpatient_reg_cond.svg"))
+
+    plt.show()
+
+
 
 
 

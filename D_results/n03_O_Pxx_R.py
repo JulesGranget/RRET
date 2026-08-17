@@ -230,32 +230,36 @@ def export_res_Pxx_general():
     #                 include_plotlyjs="cdn")
 
 
+    #### main plot
         #### inspi/expi
+    df_main_plot = df_R_Pxx.copy()
+    df_main_plot['term'] = df_main_plot['term'].replace({'respoc' : 'O-effect', 'statechl' : 'Ch-effect', 'respoc:statechl' : 'Ch:O interaction'})
+
     color_map = {
         "inspi": "#1f77b4",
         "expi":  "#d62728" 
     }
 
-    LMM_param_list = ['respoc', 'statechl', 'respoc:statechl']
+    LMM_param_list = ['O-effect', 'Ch-effect', 'Ch:O interaction']
     
     ROI_order = ['Amygdala s(8)', 'Hippocampus s(7)', 'insula-ant s(5)', 'insula-pos s(4)', 'lateralorbitofrontal s(5)', 'medialorbitofrontal s(5)', 'postcentral s(3)', 'precentral s(4)']
 
     #band = 'theta'
     for band in freq_band_dict:
 
-
         fig = make_subplots(
-            rows=len(LMM_param_list),
-            cols=1,
+            rows=1,
+            cols=len(LMM_param_list),
             shared_xaxes=True,
             subplot_titles=LMM_param_list
         )
 
-        y_max = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}").copy()["estimate"].abs().max()
+        for c, LMM_param in enumerate(LMM_param_list, start=1):
 
-        for r, LMM_param in enumerate(LMM_param_list, start=1):
+            _df_plot = df_main_plot.query(f"band == '{band}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}").copy()
 
-            _df_plot = df_R_Pxx.query(f"band == '{band}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}").copy()
+            y_min = _df_plot["estimate"].min()
+            y_max = _df_plot["estimate"].max()
 
             _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
@@ -270,34 +274,37 @@ def export_res_Pxx_general():
                     text=df_term["sig"],
                     textposition="outside",
                     marker_color=color_map[phase_cycle],
-                    row=r,
-                    col=1
+                    showlegend=(c == 1),
+                    row=1,
+                    col=c
                 )
 
-                margin = y_max * 0.50   # 15% extra space
+                margin_min = y_min * 1.50   # 50% extra space
+                margin_max = y_max * 1.50   # 50% extra space
 
                 fig.update_yaxes(
-                    range=[-y_max - margin, y_max + margin],
-                    row=r,
-                    col=1
+                    range=[margin_min, margin_max],
+                    row=1,
+                    col=c
                 )
 
                 fig.update_xaxes(
                     categoryorder="array",
                     categoryarray=ROI_order,
-                    row=r,
-                    col=1
+                    row=1,
+                    col=c
                 )
+
+                fig.update_xaxes(tickangle=-45)
 
         fig.update_layout(
             title=f"{band} all ROI",
             template="simple_white",
             barmode="group",
-            xaxis_tickangle=-45,
             yaxis_title="estimate",
             legend_title="phase_cycle",
-            height=320 * len(phase_cycle_list),  # scale height
-            width=500,
+            height=500,  # scale height
+            width=600 * len(phase_cycle_list),
         )
 
         # fig.show()
@@ -308,9 +315,94 @@ def export_res_Pxx_general():
             include_plotlyjs="cdn"
         )
 
-        fig.write_image(
-            os.path.join(path_paper_figure_export, f"{band}_threshROI_LMM.svg")
-        )
+        if band in ['theta', 'beta', 'gamma']:
+
+            fig.write_image(
+                os.path.join(path_paper_figure_export, f"fig04_{band}_threshROI_LMM.svg")
+            )
+
+    #### example plot
+    df_example_plot = df_R_Pxx.copy()
+    df_example_plot['term'] = df_example_plot['term'].replace({'respoc' : 'O-effect', 'statechl' : 'Ch-effect', 'respoc:statechl' : 'Ch:O interaction'})
+
+    color_map = {
+        "inspi": "#1f77b4",
+        "expi":  "#d62728" 
+    }
+
+    LMM_param_list = ['O-effect', 'Ch-effect', 'Ch:O interaction']
+    
+    ROI_sel = 'Amygdala s(8)'
+    band_sel = 'theta'
+
+    fig = make_subplots(
+        rows=1,
+        cols=len(LMM_param_list),
+        shared_xaxes=False,
+        subplot_titles=LMM_param_list,
+        horizontal_spacing=0.1
+    )
+
+    _df_max = df_example_plot.query(f"band == '{band_sel}' and term != '(Intercept)' and phase_cycle != 'whole' and ROI == '{ROI_sel}'").copy()
+    y_min = _df_max["estimate"].min()
+    y_max = _df_max["estimate"].max()
+
+    for c, LMM_param in enumerate(LMM_param_list, start=1):
+
+        _df_plot = df_example_plot.query(f"band == '{band_sel}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI == '{ROI_sel}'").copy()
+
+        _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
+
+        for phase_cycle in _df_plot["phase_cycle"].unique():
+
+            df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
+
+            fig.add_bar(
+                x=df_term["ROI"],
+                y=df_term["estimate"],
+                name=phase_cycle,
+                text=df_term["sig"],
+                textposition="outside",
+                marker_color=color_map[phase_cycle],
+                row=1,
+                col=c
+            )
+
+            margin_min = y_min * 1.50   # 50% extra space
+            margin_max = y_max * 1.50   # 50% extra space
+
+            fig.update_yaxes(
+                range=[y_min + margin_min, y_max + margin_max],
+                tickfont=dict(size=14),
+                row=1,
+                col=c
+            )
+
+            fig.update_xaxes(
+                categoryorder="array",
+                categoryarray=ROI_order,
+                tickangle=-45,
+                tickfont=dict(size=14),
+                row=1,
+                col=c
+            )
+
+
+    fig.update_layout(
+        title=f"{band} all ROI",
+        template="simple_white",
+        barmode="group",
+        yaxis_title="estimate",
+        legend_title="phase_cycle",
+        height=500,  # scale height
+        width=400 * len(phase_cycle_list),
+    )
+
+    # fig.show()
+
+    fig.write_image(
+        os.path.join(path_paper_figure_export, f"fig03b_{band}_Pxx_LMM.svg")
+    )
 
     #### export df data
     df_export = df_R_Pxx.query(f"phase_cycle != 'whole' and ROI in {ROI_plot_short_list} and term != '(Intercept)'")
@@ -370,25 +462,29 @@ def export_res_Pxx_MECACO2():
 
     LMM_param_list = ['oc_condoc', 'condBOTH', 'condCO2', 'condMECA',
        'oc_condoc:condBOTH', 'oc_condoc:condCO2', 'oc_condoc:condMECA']
+
+    LMM_param_list_corres = {'oc_condoc' : 'O', 'condBOTH' : 'MECA+CO2', 'condCO2' : 'CO2', 'condMECA' : 'CO2', 
+                            'oc_condoc:condBOTH' : 'O:MECA+CO2', 'oc_condoc:condCO2' : 'O:CO2', 'oc_condoc:condMECA' : 'O:MECA'}
     
     ROI_order = ['Amygdala s(3)', 'Hippocampus s(2)', 'insula-ant s(1)', 'lateralorbitofrontal s(2)', 'medialorbitofrontal s(1)', 'postcentral s(1)']
 
     #band = 'theta'
     for band in freq_band_dict:
 
-
         fig = make_subplots(
             rows=len(LMM_param_list),
             cols=1,
-            shared_xaxes=True,
-            subplot_titles=LMM_param_list
+            shared_xaxes=False,
+            subplot_titles=list(LMM_param_list_corres.values()),
+            vertical_spacing=0.07
         )
-
-        y_max = df_R_Pxx.query(f"band == '{band}' and term != '(Intercept)' and ROI in {ROI_plot_short_list}").copy()["estimate"].abs().max()
 
         for r, LMM_param in enumerate(LMM_param_list, start=1):
 
             _df_plot = df_R_Pxx.query(f"band == '{band}' and term == '{LMM_param}' and ROI in {ROI_plot_short_list}").copy()
+            y_min, ymax = _df_plot["estimate"].min()*2, _df_plot["estimate"].max()*2
+            
+            _df_plot['term'] = _df_plot['term'].replace(LMM_param_list_corres)
 
             _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
@@ -407,10 +503,9 @@ def export_res_Pxx_MECACO2():
                     col=1
                 )
 
-                margin = y_max * 0.50   # 15% extra space
-
                 fig.update_yaxes(
-                    range=[-y_max - margin, y_max + margin],
+                    range=[y_min, ymax],
+                    tickfont=dict(size=14),
                     row=r,
                     col=1
                 )
@@ -418,6 +513,8 @@ def export_res_Pxx_MECACO2():
                 fig.update_xaxes(
                     categoryorder="array",
                     categoryarray=ROI_order,
+                    tickangle=-45,
+                    tickfont=dict(size=14),
                     row=r,
                     col=1
                 )
@@ -426,10 +523,9 @@ def export_res_Pxx_MECACO2():
             title=f"{band} all ROI",
             template="simple_white",
             barmode="group",
-            xaxis_tickangle=-45,
             yaxis_title="estimate",
             legend_title="phase_cycle",
-            height=320 * len(LMM_param_list),  # scale height
+            height=450 * len(LMM_param_list),  # scale height
             width=500,
         )
 
@@ -580,7 +676,7 @@ def export_res_Pxx_MECACO2_REG():
     outdir = os.path.join(path_results, "LMM", "MECACO2", "fig")
 
     filename = os.path.join(path_precompute, 'TF', 'session', 'df_R', f"df_reg_MECACO2_R.xlsx")
-    df_reg_MECACO2 = pd.read_excel(filename)
+    df_reg_MECACO2 = pd.read_excel(filename) #file with OC
 
     ROI_sel = 'Amygdala'
 
@@ -593,37 +689,60 @@ def export_res_Pxx_MECACO2_REG():
     plt.savefig(os.path.join(outdir, f"{ROI_sel}_{band_sel}_reg_example.png"))
 
     df_median = df_plot_reg_one_ROI.drop(columns=['Unnamed: 0', 'chan_label', 'ROI']).groupby(['cond', 'band', 'phase_cycle', 'chan', 'sujet']).median().reset_index()
-    sns.lmplot(df_median, x='oc_ratio', y='Pxx', hue='cond', col='band', hue_order=['ctrl', 'MECA', 'CO2', 'BOTH'])
+    df_median = df_median.query(f"band in ['theta', 'beta', 'gamma']")
+    df_median['cond'] = df_median['cond'].replace({'ctrl' : 'O', 'MECA' : 'O+MECA', 'CO2' : 'O+CO2', 'BOTH' : 'O+MECA+CO2'})
+    g = sns.lmplot(df_median, x='oc_ratio', y='Pxx', hue='cond', col='band', hue_order=['O', 'O+MECA', 'O+CO2', 'O+MECA+CO2'], ci=None)
+
+    for ax in g.axes.flat:
+        ax.tick_params(axis="x", labelsize=14)
+        ax.tick_params(axis="y", labelsize=14)
+
+        g.set_xlabels("OR", fontsize=16)
+        g.set_ylabels("Pxx", fontsize=16)
+    
     # plt.show()
     plt.savefig(os.path.join(outdir, f"{ROI_sel}_chanwise_reg_example.png"))
+    plt.savefig(os.path.join(path_paper_figure_export, f"fig07b_{ROI_sel}_chanwise_reg_example.svg"))
 
     plt.close('all')
 
     #### only one ROI LMM
+    LMM_param_list_corres = {'oc_ratio' : 'OR', 'condMECA' : 'MECA', 'condCO2' : 'CO2', 'condBOTH' : 'MECA+CO2', 
+                            'condMECA:oc_ratio' : 'OR:MECA',  'condCO2:oc_ratio' : 'OR:CO2', 'condBOTH:oc_ratio' : 'OR:MECA+CO2'}
+    
     ROI_sel = 'Amygdala s(3)'
     ROI_title = 'AMYGDALA'
-    band_list = list(freq_band_dict.keys())
+    band_list = ['theta', 'beta', 'gamma']
 
     LMM_param_dict = {  'full' : ['oc_ratio', 'condMECA', 'condCO2', 'condBOTH', 
                                 'condMECA:oc_ratio', 'condCO2:oc_ratio', 'condBOTH:oc_ratio'],
                         'COND' : ['condMECA', 'condCO2', 'condBOTH'],
                         'OC_RATIO' : ['oc_ratio', 'condMECA:oc_ratio', 'condCO2:oc_ratio', 'condBOTH:oc_ratio'],}
 
+    #effect_type = 'OC_RATIO'
     for effect_type in LMM_param_dict:
 
         fig = make_subplots(
-            rows=len(freq_band_dict),
-            cols=1,
+            rows=1,
+            cols=len(band_list),
             shared_xaxes=False,
             subplot_titles=band_list
         )
 
-        for r, band in enumerate(band_list, start=1):
+        for c, band in enumerate(band_list, start=1):
 
             _df_plot = df_R_Pxx.query(f"band == '{band}' and ROI == '{ROI_sel}' and term in {LMM_param_dict[effect_type]}").copy()
+            _df_plot['term'] = _df_plot['term'].replace(LMM_param_list_corres)
 
             _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
+            y_min, y_max = _df_plot["estimate"].min()*2, _df_plot["estimate"].max()*2
+
+            if y_max < 0:
+                y_max = 0.1
+            if 0 < y_min:
+                y_min = -0.1
+            
             for phase_cycle in _df_plot["phase_cycle"].unique():
 
                 df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
@@ -635,38 +754,47 @@ def export_res_Pxx_MECACO2_REG():
                     text=df_term["sig"],
                     textposition="outside",
                     marker_color=color_map[phase_cycle],
-                    row=r,
-                    col=1
+                    row=1,
+                    col=c
                 )
 
-                y_max = _df_plot["estimate"].abs().max()
-
-                margin = y_max * 0.50   # 15% extra space
-
                 fig.update_yaxes(
-                    range=[-y_max - margin, y_max + margin],
+                    range=[y_min, y_max],
+                    tickfont=dict(size=14),
                     row=r,
                     col=1
                 )
 
                 fig.update_xaxes(
                     categoryorder="array",
-                    categoryarray=LMM_param_dict[effect_type],
-                    row=r,
-                    col=1
+                    categoryarray=[LMM_param_list_corres[_param] for _param in LMM_param_dict[effect_type]],
+                    tickangle=-45,
+                    tickfont=dict(size=14),
+                    row=1,
+                    col=c
                 )
 
+        if effect_type == 'COND':
             fig.update_layout(
             title=f"{ROI_title} all band",
             template="simple_white",
             barmode="group",
             yaxis_title="estimate",
             legend_title="phase_cycle",
-            height=500 * len(LMM_param_dict[effect_type]),
-            width=400,
+            height=500,
+            width=400 * len(LMM_param_dict[effect_type]),
             )
 
-        fig.update_xaxes(tickangle=-45)
+        if effect_type == 'OC_RATIO':
+            fig.update_layout(
+            title=f"{ROI_title} all band",
+            template="simple_white",
+            barmode="group",
+            yaxis_title="estimate",
+            legend_title="phase_cycle",
+            height=500,
+            width=300 * len(LMM_param_dict[effect_type]),
+            )
 
         # fig.show()
 
@@ -676,9 +804,11 @@ def export_res_Pxx_MECACO2_REG():
             include_plotlyjs="cdn"
         )
 
-        fig.write_image(
-            os.path.join(path_paper_figure_export, f"{ROI_title}_{effect_type}_REG_MECACO2_threshROI_LMM.svg")
-        )
+        if effect_type in ['COND', 'OC_RATIO']:
+
+            fig.write_image(
+                os.path.join(path_paper_figure_export, f"fig07b_{ROI_title}_{effect_type}_REG_MECACO2_threshROI_LMM.svg")
+            )
 
     #### export df data
     df_export = df_R_Pxx.query(f"ROI == '{ROI_sel}' and term != '(Intercept)'")

@@ -44,6 +44,7 @@ sujet_list_allcond = {'rsp_ctrl' : ['NS086_02', 'NS131_02', 'NS202', 'NS203', 'N
                       'oc_chl' : ['NS131_02', 'NS202', 'NS203', 'NS205', 'NS206', 'NS208', 'NS211', 'NS213', 'NS215']}
 
 conditions = ['rsp_ctrl', 'rsp_chl', 'oc_ctrl', 'oc_chl']
+conditions_corresp = {'rsp_ctrl' : 'RB', 'rsp_chl' : 'Ch', 'oc_ctrl' : 'O', 'oc_chl' : 'O+Ch'}
 phase_cycle_list = ['whole', 'inspi', 'expi']
 
 freq_band_dict = {'theta' : [4,8], 'alpha' : [8,12], 'beta' : [12,50], 'gamma' : [60, 150]}

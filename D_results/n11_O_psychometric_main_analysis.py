@@ -128,15 +128,18 @@ def export_fig_psychometric():
     # plt.show()
 
     os.chdir(os.path.join(path_results, 'Psycho')) 
-    fig.savefig(f"psycho_patientlinked.png")
+    # fig.savefig(f"psycho_patientlinked.png")
 
-    ########
+    #### patient linked seaborn sauce
+    df_plot = df_psycho_med_patientwise.query(f"psychometric in ['trialAnxiety', 'trialUnpleasantness']")
+    df_plot['resp'] = df_plot['resp'].replace({'chl' : 'Ch', 'ctrl' : 'RB'})
+    df_plot['psychometric'] = df_plot['psychometric'].replace({'trialAnxiety' : 'Anxiety', 'trialUnpleasantness' : 'Unpleasantness'})
 
-    cond_order = ["ctrl", "chl"]
+    cond_order = ["RB", "Ch"]
 
     palette = {
-        "ctrl": "tab:blue",
-        "chl": "tab:orange"
+        "RB": "tab:blue",
+        "Ch": "tab:orange"
     }
 
     # Create median bars, automatically faceted by psychometric
@@ -153,7 +156,7 @@ def export_fig_psychometric():
         palette=palette,
         alpha=0.4,
         legend=False,
-        height=5,
+        height=8,
         aspect=0.5
     )
 
@@ -170,8 +173,9 @@ def export_fig_psychometric():
             errorbar=None,
             palette=["gray"] * df_plot["sujet"].nunique(),
             markers="o",
+            markersize=8,
             linestyles="-",
-            linewidth=1,
+            linewidth=2,
             alpha=0.7,
             legend=False,
             ax=ax
@@ -179,8 +183,26 @@ def export_fig_psychometric():
 
     g.set_axis_labels("", "Value")
     g.set_titles("{col_name}")
+    g.set(ylim=(0, 10))
 
-    plt.show()
+    for ax in g.axes.flat:
+        ax.xaxis.label.set_size(20)
+        ax.yaxis.label.set_size(20)
+
+    for ax in g.axes.flat:
+        ax.tick_params(axis="x", labelsize=20)
+        ax.tick_params(axis="y", labelsize=20)
+
+    g.axes.flat[0].set_title("Anxiety", fontsize=20)
+    g.axes.flat[1].set_title("Unpleasantness", fontsize=20)
+
+    # plt.show()
+
+    os.chdir(os.path.join(path_results, 'Psycho')) 
+    g.savefig(f"Psycho_res_allpatient.png")
+    g.savefig(os.path.join(path_paper_figure_export, f"fig02e_psycho.svg"))
+    
+        
 
 
 

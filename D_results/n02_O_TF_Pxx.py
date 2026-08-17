@@ -150,7 +150,7 @@ def tf_absolute_allpatient():
     percentile_plot = [1,99]
     time_vec = np.arange(stretch_point_TF)
 
-    #loca_sel_i, loca_sel = 2, localist_unique[2]
+    #loca_sel_i, loca_sel = 0, localist_unique[0]
     # for loca_sel_i, loca_sel in enumerate(localist_unique):
     def plot_allsujet_loca(loca_sel_i, loca_sel):
 
@@ -213,41 +213,6 @@ def tf_absolute_allpatient():
         fig.savefig(f"DIV_allsujet_{loca_sel}_TF.jpg")
         plt.close('all')
 
-            #### plot lateral median
-        med_lines = np.stack([np.median(_tf_allsujet_median[:,:,:,:int(stretch_point_TF/2)], axis=-1), np.median(_tf_allsujet_median[:,:,:,int(stretch_point_TF/2):], axis=-1)])
-        _vlim = np.abs([np.min(med_lines), np.max(med_lines)]).max()
-
-        fig, axs = plt.subplots(ncols=4, nrows=2, figsize=(8,8))
-
-        for time_phase_sel_i, time_phase_sel in enumerate(time_phase_list):
-        
-            for cond_i, cond in enumerate(conditions):
-            
-                ax = axs[time_phase_sel_i, cond_i]
-                ax.plot(med_lines[0, time_phase_sel_i, cond_i], frex, color='b')
-                ax.plot(med_lines[1, time_phase_sel_i, cond_i], frex, color='r')
-                ax.set_yscale('log')
-                ax.set_xlim(-_vlim, _vlim)
-                
-                ax.set_yticks(ticks_freq)
-                ax.set_yticklabels([str(t) for t in ticks_freq])
-
-                if cond_i == 0:
-                    ax.set_ylabel(time_phase_sel)
-                if time_phase_sel_i == 1:
-                    ax.set_xlabel('Power Median')
-                if time_phase_sel_i == 0:
-                    ax.set_title(f"{cond} c{int(_ncycle_tot[time_phase_i, cond_i])}")
-
-        plt.suptitle(f"{loca_sel} s({len(_patient_list_unique)})")
-
-        # plt.show()
-
-            #### save
-        os.chdir(os.path.join(path_results, 'TF', 'allsujet', 'ABSOLUTE'))
-        fig.savefig(f"MEDLINE_allsujet_{loca_sel}.jpg")
-        plt.close('all')
-
         #### JET
             #### plot TF
         _vlim = np.abs([np.percentile(np.stack(_tf_allsujet_median, axis=0), percentile_plot[0]), np.percentile(np.stack(_tf_allsujet_median, axis=0), percentile_plot[1])]).max()
@@ -283,6 +248,62 @@ def tf_absolute_allpatient():
         fig.savefig(f"JET_allsujet_{loca_sel}_TF.jpg")
         plt.close('all')
 
+        #### HIST
+            #### plot TF
+        os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_R'))
+
+        df_Pxx = []
+        for band in freq_band_dict:
+            _df = pd.read_excel(f"df_R_{band}.xlsx").query(f"ROI == '{loca_sel}'")
+            _df['band'] = [band] * _df.shape[0]
+            _df['resp'] = _df['resp'].replace({'rsp' : 'RB', 'oc' : 'O+'})
+            _df['state'] = _df['state'].replace({'ctrl' : 'RB', 'chl' : 'Ch'})
+            _df['cond'] = _df['resp'] + _df['state']
+            _df['cond'] = _df['cond'].replace({'RBRB' : 'RB', 'RBCh' : 'Ch', 'O+RB' : 'O'})
+            df_Pxx.append(_df)
+
+        df_Pxx = pd.concat(df_Pxx)
+
+        band_sel = 'theta'
+
+        cond_order = ['RB', 'Ch', 'O', 'O+Ch']
+        df_phase_cycle = df_Pxx.query(f"phase_cycle != 'whole' and band == '{band_sel}'")[['cond', 'sujet', 'phase_cycle', 'Pxx']].groupby(['cond', 'sujet', 'phase_cycle']).median().reset_index()
+
+        fig, axs = plt.subplots(ncols=2, figsize=(13,7))
+
+        for c, phase_sel in enumerate(phase_cycle_list):
+
+            ax = axs[c]
+
+            df_plot = df_phase_cycle.query(f"phase_cycle == '{phase_sel}'")
+            sns.barplot(data=df_plot, x="cond", y="Pxx", errorbar=None, ax=ax, order=cond_order, alpha=0.5)
+            sns.stripplot(data=df_plot, x="cond", y="Pxx", ax=ax, hue='sujet', size=8, order=cond_order, legend=False)
+
+            ax.xaxis.label.set_size(15)
+            ax.yaxis.label.set_size(15)
+        
+            ax.tick_params(axis="x", labelsize=15)
+            ax.tick_params(axis="y", labelsize=15)
+
+            ax.set_title(f"{phase_sel}")
+
+        plt.suptitle(f"{band_sel} {loca_sel}")
+
+        plt.tight_layout()
+        
+        # plt.show()
+
+            #### save
+        os.chdir(os.path.join(path_results, 'TF', 'allsujet', 'ABSOLUTE'))
+        fig.savefig(f"HIST_allsujet_{loca_sel}_TF.jpg")
+        plt.close('all')
+
+        if loca_sel == 'Amygdala':
+
+            fig.savefig(os.path.join(path_paper_figure_export, f"fig03b_TF_Pxx.svg"))
+
+
+        
     joblib.Parallel(n_jobs = n_core, prefer = 'processes')(joblib.delayed(plot_allsujet_loca)(loca_sel_i, loca_sel) for loca_sel_i, loca_sel in enumerate(localist_unique))
     
     plt.close('all')
@@ -297,9 +318,6 @@ def tf_absolute_allpatient():
 
 def Pxx_absolute_patientwise(sujet):
     
-    os.chdir(os.path.join(path_precompute, 'TF', 'session'))
-    xr_Pxx = xr.load_dataarray(f'{sujet}_xr_Pxx.nc')    
-
     df_coords_allsujet = []
     for sujet in sujet_list:
         _df_coords = get_coords(sujet)
@@ -328,7 +346,6 @@ def Pxx_absolute_patientwise(sujet):
        'total_volume']
     rf_metrics_whole_cycle = ['cycle_duration', 'cycle_freq', 'total_amplitude', 'total_volume']
     rf_metrics_phase_cycle = ['inspi_duration', 'expi_duration', 'inspi_volume', 'expi_volume', 'inspi_amplitude', 'expi_amplitude']
-
 
     for sujet in sujet_list:
 
