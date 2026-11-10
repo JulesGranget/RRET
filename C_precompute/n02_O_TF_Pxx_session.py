@@ -29,7 +29,7 @@ def visualize_sig(sujet):
     print(f'TF PRECOMPUTE {sujet}', flush=True)
 
     #### get params
-    data, resp, chanlist, localist = get_data_sujet_fullsig(sujet)
+    data, resp, co2, chanlist, localist = get_data_sujet_fullsig(sujet)
 
     time_vec_sec = np.arange(resp[0].size)/srate - (resp[0].size/srate)/2
     chan_list, loca_list = get_chanlist(sujet)
@@ -228,14 +228,14 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     #### verify if already computed
     os.chdir(os.path.join(path_precompute, 'TF', 'session'))
 
-    if os.path.exists(f"{sujet}_rsp_ctrl_tf_allchan_stretch_post.npy"):
-        print(f'{sujet} ALREADY COMPUTED', flush=True)
-        return
+    # if os.path.exists(f"{sujet}_rsp_ctrl_tf_allchan_stretch_post.npy"):
+    #     print(f'{sujet} ALREADY COMPUTED', flush=True)
+    #     return
 
     print(f'TF PRECOMPUTE {sujet}', flush=True)
 
     #### get params
-    data, resp, chanlist, localist = get_data_sujet_fullsig(sujet)
+    data, resp, co2, chanlist, localist = get_data_sujet_fullsig(sujet)
 
     time_vec_sec = np.arange(resp[0].size)/srate - (resp[0].size/srate)/2
     chan_list, loca_list = get_chanlist(sujet)
@@ -248,6 +248,7 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     #### generate linear signals
     print('CONSTRUCT LINEAR SIG')
     resp_linear = []
+    co2_linear = []
     data_linear = []
     inspi_starts = []
     _len_resp = 0
@@ -266,12 +267,16 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
             plt.plot(resp[epoch_i])
             plt.show()
 
+            plt.plot(co2[epoch_i])
+            plt.show()
+
             plt.pcolormesh(data[:,epoch_i])
             plt.show()
 
         if epoch_i == 0:
 
             resp_linear.append(resp[epoch_i])
+            co2_linear.append(co2[epoch_i])
             data_linear.append(data[:,epoch_i])
             inspi_starts.append(_half_time)
             _len_resp += resp[epoch_i].size
@@ -280,6 +285,7 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
             _resp_m1 = resp[epoch_i-1]
             _resp_1 = resp[epoch_i]
+            _co2_1 = co2[epoch_i]
 
             _congruence = []
             for i in range(_resp_m1.size):
@@ -310,9 +316,11 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
                 plt.show()
 
             _sig_add_resp = _resp_1[_i_roll_tot:]
+            _sig_add_co2 = _co2_1[_i_roll_tot:]
             _sig_add_data = data[:,epoch_i,_i_roll_tot:]
 
             resp_linear.append(_sig_add_resp)
+            co2_linear.append(_sig_add_co2)
             data_linear.append(_sig_add_data)
 
             _len_resp += _resp_1[_i_roll_tot:].size
@@ -333,6 +341,7 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
             plt.show()
 
     resp_linear = np.concatenate(resp_linear, axis=0)
+    co2_linear = np.concatenate(co2_linear, axis=0)
     data_linear = np.concatenate(data_linear, axis=1)
     inspi_starts = np.array(inspi_starts)
 
@@ -346,6 +355,9 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
         plt.plot(resp_linear)
         plt.vlines(inspi_starts, ymin=resp_linear.min(), ymax=resp_linear.max(), color='r')
+        plt.show()
+
+        plt.plot(co2_linear)
         plt.show()
 
         sig = data_linear[0]
@@ -624,10 +636,15 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     tf_allchan_stretch = np.array(tf_allchan_stretch)
 
     resp_stretch = stretch_data(resp_features, stretch_point_TF, resp_linear, srate)[0]
+    co2_stretch = stretch_data(resp_features, stretch_point_TF, co2_linear, srate)[0]
 
     if debug:
         for cycle_i in range(resp_stretch.shape[0]):
             plt.plot(resp_stretch[cycle_i])
+        plt.show()
+
+        for cycle_i in range(co2_stretch.shape[0]):
+            plt.plot(co2_stretch[cycle_i])
         plt.show()
 
         plt.pcolormesh(np.median(tf_allchan_stretch[0], axis=[0]))
@@ -654,6 +671,7 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     df_resp_cycle_cleaned = df_resp_cycle[extract_good_all]
     tf_allchan_stretch_cleaned = tf_allchan_stretch[:,extract_good_all]
     resp_stretch_cleaned = resp_stretch[extract_good_all]
+    co2_stretch_cleaned = co2_stretch[extract_good_all]
     resp_features_cleaned = resp_features[extract_good_all]
 
     cond_sel_dict = {}
@@ -711,13 +729,15 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
 
     for cond in conditions:
 
-        _df = resp_features_cleaned.iloc[cond_sel_dict[cond]]
+        _df = resp_features_cleaned.iloc[cond_sel_dict[cond]].copy()
         _df['sujet'] = [sujet] * _df.shape[0]
         _df['cond'] = [cond] * _df.shape[0]
+        _df['etCO2'] = co2_stretch_cleaned[cond_sel_dict[cond]].max(axis=1)
 
-        _df_pre = resp_features_cleaned.iloc[cond_sel_dict_pre[cond]]
+        _df_pre = resp_features_cleaned.iloc[cond_sel_dict_pre[cond]].copy()
         _df_pre['sujet'] = [sujet] * _df_pre.shape[0]
         _df_pre['cond'] = [cond] * _df_pre.shape[0]
+        _df_pre['etCO2'] = co2_stretch_cleaned[cond_sel_dict[cond]].max(axis=1)
 
         df_respfeature_label.append(_df)
         df_respfeature_label_pre.append(_df_pre)
@@ -749,10 +769,6 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     os.remove(f'memmap_{sujet}_tf_conv_norm.npy')
 
     del data, resp, tf_allconv, tf_allconv_norm
-
-
-
-
 
 
 

@@ -26,7 +26,7 @@ def generate_all_df_Pxx_wholecycle():
 
     phase_cycle_list = ['inspi', 'expi']
 
-    os.chdir(os.path.join(path_results, 'LMM', 'df'))
+    path_load_LMM_res = os.path.join(path_results, 'LMM', 'df')
 
     df_R_Pxx = []
 
@@ -36,13 +36,13 @@ def generate_all_df_Pxx_wholecycle():
 
             for ROI in ROI_short_list:
 
-                _df = pd.read_excel(f"RES_{band}_{phase_cycle}_{ROI}_Pxx.xlsx")
-                _df_add = pd.concat([pd.DataFrame({'phase_cycle' : [phase_cycle]*_df.shape[0], 'band' : [band]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value']]], axis=1)
+                _df = pd.read_excel(os.path.join(path_load_LMM_res, f"RES_{band}_{phase_cycle}_{ROI}_Pxx.xlsx"))
+                _df_add = pd.concat([pd.DataFrame({'phase_cycle' : [phase_cycle]*_df.shape[0], 'band' : [band]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value', 'std.error']]], axis=1)
                 
                 df_R_Pxx.append(_df_add)
 
     df_R_Pxx = pd.concat(df_R_Pxx)
-    df_R_Pxx = df_R_Pxx.rename(columns={'p.value' : 'pvalue'})
+    df_R_Pxx = df_R_Pxx.rename(columns={'p.value' : 'pvalue', 'std.error' : 'std_error'})
 
     return df_R_Pxx
 
@@ -92,7 +92,7 @@ def generate_all_df_Pxx_MECACO2_REG():
             for ROI in ROI_short_list_MECACO2:
 
                 _df = pd.read_excel(f"RES_{phase_cycle}_{band}_{ROI}_Pxx_OC_LMM.xlsx")
-                _df_add = pd.concat([pd.DataFrame({'phase_cycle' : [phase_cycle]*_df.shape[0], 'band' : [band]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value']]], axis=1)
+                _df_add = pd.concat([pd.DataFrame({'phase_cycle' : [phase_cycle]*_df.shape[0], 'band' : [band]*_df.shape[0], 'ROI' : [ROI]*_df.shape[0]}), _df[['term', 'estimate', 'p.value', 'std.error']]], axis=1)
                 
                 df_R_Pxx.append(_df_add)
 
@@ -142,6 +142,7 @@ def export_res_Pxx_general():
 
     #### load df
     df_R_Pxx = generate_all_df_Pxx_wholecycle()
+    df_R_Pxx.to_excel(os.path.join(path_results, 'figure_paper', 'df', 'fig04.xlsx'))
 
     df_loca_allsujet = get_df_loca_allsujet()
 
@@ -256,55 +257,95 @@ def export_res_Pxx_general():
 
         for c, LMM_param in enumerate(LMM_param_list, start=1):
 
-            _df_plot = df_main_plot.query(f"band == '{band}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}").copy()
-
-            y_min = _df_plot["estimate"].min()
-            y_max = _df_plot["estimate"].max()
+            _df_plot = df_main_plot.query(
+                f"band == '{band}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI in {ROI_plot_short_list}"
+            ).copy()
 
             _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
-            for phase_cycle in _df_plot["phase_cycle"].unique():
+            phases = list(_df_plot["phase_cycle"].unique())
 
-                df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
+            # keep phase/hue points close together within each ROI
+            phase_offsets = dict(zip(phases, np.linspace(-0.12, 0.12, len(phases))))
 
-                fig.add_bar(
-                    x=df_term["ROI"],
+            # ROI positions remain clearly separated
+            roi_to_x = {roi: i for i, roi in enumerate(ROI_order)}
+
+            y_min = (_df_plot["estimate"] - _df_plot["std_error"]).min()
+            y_max = (_df_plot["estimate"] + _df_plot["std_error"]).max()
+
+            y_range = y_max - y_min
+            star_offset = 0.04 * y_range
+            margin = 0.15 * y_range
+
+            for phase_cycle in phases:
+
+                df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle].copy()
+
+                x_pos = np.array([roi_to_x[roi] for roi in df_term["ROI"]]) + phase_offsets[phase_cycle]
+
+                # estimate + SE
+                fig.add_scatter(
+                    x=x_pos,
                     y=df_term["estimate"],
+                    mode="markers",
                     name=phase_cycle,
-                    text=df_term["sig"],
-                    textposition="outside",
-                    marker_color=color_map[phase_cycle],
+                    marker=dict(
+                        color=color_map[phase_cycle],
+                        size=10
+                    ),
+                    error_y=dict(
+                        type="data",
+                        array=df_term["std_error"],
+                        visible=True,
+                        color=color_map[phase_cycle],
+                        thickness=1.5,
+                        width=4
+                    ),
                     showlegend=(c == 1),
                     row=1,
                     col=c
                 )
 
-                margin_min = y_min * 1.50   # 50% extra space
-                margin_max = y_max * 1.50   # 50% extra space
-
-                fig.update_yaxes(
-                    range=[margin_min, margin_max],
+                # significance stars above error bar
+                fig.add_scatter(
+                    x=x_pos,
+                    y=df_term["estimate"] + df_term["std_error"] + star_offset,
+                    mode="text",
+                    text=df_term["sig"],
+                    textposition="top center",
+                    textfont=dict(size=16),
+                    showlegend=False,
+                    hoverinfo="skip",
                     row=1,
                     col=c
                 )
 
-                fig.update_xaxes(
-                    categoryorder="array",
-                    categoryarray=ROI_order,
-                    row=1,
-                    col=c
-                )
+            fig.update_yaxes(
+                range=[y_min - margin, y_max + 2 * margin],
+                zeroline=True,
+                zerolinecolor="grey",
+                zerolinewidth=1,
+                row=1,
+                col=c
+            )
 
-                fig.update_xaxes(tickangle=-45)
+            fig.update_xaxes(
+                tickmode="array",
+                tickvals=list(range(len(ROI_order))),
+                ticktext=ROI_order,
+                tickangle=-45,
+                row=1,
+                col=c
+            )
 
         fig.update_layout(
             title=f"{band} all ROI",
             template="simple_white",
-            barmode="group",
-            yaxis_title="estimate",
+            yaxis_title="<i>β</i> estimate",
             legend_title="phase_cycle",
-            height=500,  # scale height
-            width=600 * len(phase_cycle_list),
+            height=500,
+            width=500 * len(LMM_param_list)
         )
 
         # fig.show()
@@ -343,65 +384,99 @@ def export_res_Pxx_general():
         horizontal_spacing=0.1
     )
 
-    _df_max = df_example_plot.query(f"band == '{band_sel}' and term != '(Intercept)' and phase_cycle != 'whole' and ROI == '{ROI_sel}'").copy()
-    y_min = _df_max["estimate"].min()
-    y_max = _df_max["estimate"].max()
+    _df_max = df_example_plot.query(
+        f"band == '{band_sel}' and term != '(Intercept)' and phase_cycle != 'whole' and ROI == '{ROI_sel}'"
+    ).copy()
+
+    y_min = (_df_max["estimate"] - _df_max["std_error"]).min()
+    y_max = (_df_max["estimate"] + _df_max["std_error"]).max()
+    y_range = y_max - y_min if y_max != y_min else 1
+
+    star_offset = 0.04 * y_range
+    margin = 0.15 * y_range
 
     for c, LMM_param in enumerate(LMM_param_list, start=1):
 
-        _df_plot = df_example_plot.query(f"band == '{band_sel}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI == '{ROI_sel}'").copy()
+        _df_plot = df_example_plot.query(
+            f"band == '{band_sel}' and term == '{LMM_param}' and phase_cycle != 'whole' and ROI == '{ROI_sel}'"
+        ).copy()
 
         _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
-        for phase_cycle in _df_plot["phase_cycle"].unique():
+        phases = list(_df_plot["phase_cycle"].unique())
+        _offset = 0.15
+        phase_offsets = {'inspi' : -_offset, 'expi' : _offset}
 
-            df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
+        for phase_cycle in phases:
 
-            fig.add_bar(
-                x=df_term["ROI"],
+            df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle].copy()
+            x_pos = np.zeros(len(df_term)) + phase_offsets[phase_cycle]
+
+            fig.add_scatter(
+                x=x_pos,
                 y=df_term["estimate"],
+                mode="markers",
                 name=phase_cycle,
+                marker=dict(color=color_map[phase_cycle], size=10),
+                error_y=dict(
+                    type="data",
+                    array=df_term["std_error"],
+                    visible=True,
+                    color=color_map[phase_cycle],
+                    thickness=1.5,
+                    width=4
+                ),
+                showlegend=(c == 1),
+                row=1,
+                col=c
+            )
+
+            fig.add_scatter(
+                x=x_pos,
+                y=df_term["estimate"] + df_term["std_error"] + star_offset,
+                mode="text",
                 text=df_term["sig"],
-                textposition="outside",
-                marker_color=color_map[phase_cycle],
+                textposition="top center",
+                textfont=dict(size=16),
+                showlegend=False,
+                hoverinfo="skip",
                 row=1,
                 col=c
             )
 
-            margin_min = y_min * 1.50   # 50% extra space
-            margin_max = y_max * 1.50   # 50% extra space
+        fig.update_yaxes(
+            range=[y_min - margin, y_max + 2 * margin],
+            tickfont=dict(size=14),
+            title_text="β estimate" if c == 1 else None,
+            zeroline=True,
+            zerolinecolor="grey",
+            zerolinewidth=1,
+            row=1,
+            col=c
+        )
 
-            fig.update_yaxes(
-                range=[y_min + margin_min, y_max + margin_max],
-                tickfont=dict(size=14),
-                row=1,
-                col=c
-            )
-
-            fig.update_xaxes(
-                categoryorder="array",
-                categoryarray=ROI_order,
-                tickangle=-45,
-                tickfont=dict(size=14),
-                row=1,
-                col=c
-            )
-
+        fig.update_xaxes(
+            range=[-1, 1],
+            tickmode="array",
+            tickvals=[0],
+            ticktext=[ROI_sel],
+            tickfont=dict(size=14),
+            row=1,
+            col=c
+        )
 
     fig.update_layout(
-        title=f"{band} all ROI",
+        title=f"{band_sel} {ROI_sel}",
         template="simple_white",
-        barmode="group",
-        yaxis_title="estimate",
         legend_title="phase_cycle",
-        height=500,  # scale height
-        width=400 * len(phase_cycle_list),
+        height=500,
+        width=200 * len(LMM_param_list)
     )
 
     # fig.show()
 
     fig.write_image(
-        os.path.join(path_paper_figure_export, f"fig03b_{band}_Pxx_LMM.svg")
+        os.path.join(path_paper_figure_export, f"fig03b_{band_sel}_Pxx_LMM.svg")
     )
 
     #### export df data
@@ -560,6 +635,7 @@ def export_res_Pxx_MECACO2_REG():
 
     #### load df
     df_R_Pxx = generate_all_df_Pxx_MECACO2_REG()
+    # df_R_Pxx.to_excel(os.path.join(path_results, f"df_LMM_Pxx_OR_CO2.xlsx"))
 
     df_loca_allsujet = get_df_loca_allsujet()
     df_loca_allsujet = df_loca_allsujet.query(f"sujet in {sujet_list_interaction_analysis}")
@@ -681,6 +757,7 @@ def export_res_Pxx_MECACO2_REG():
     ROI_sel = 'Amygdala'
 
     df_plot_reg_one_ROI = df_reg_MECACO2.query(f"ROI == '{ROI_sel}'")
+    # df_plot_reg_one_ROI.to_excel(os.path.join(path_results, f"df_plot_reg_AMYGDALA_Pxx_OC.xlsx"))
 
     band_sel = 'theta'
     sns.lmplot(df_plot_reg_one_ROI.query(f"band == '{band_sel}'"), x='oc_ratio', y='Pxx', hue='sujet', col='cond', col_order=['ctrl', 'MECA', 'CO2', 'BOTH'])
@@ -719,6 +796,8 @@ def export_res_Pxx_MECACO2_REG():
                         'COND' : ['condMECA', 'condCO2', 'condBOTH'],
                         'OC_RATIO' : ['oc_ratio', 'condMECA:oc_ratio', 'condCO2:oc_ratio', 'condBOTH:oc_ratio'],}
 
+    effect_type_size = { 'full' : 300 * len(band_list), 'COND' : 300 * len(band_list), 'OC_RATIO' : 450 * len(band_list)}
+
     #effect_type = 'OC_RATIO'
     for effect_type in LMM_param_dict:
 
@@ -731,69 +810,115 @@ def export_res_Pxx_MECACO2_REG():
 
         for c, band in enumerate(band_list, start=1):
 
-            _df_plot = df_R_Pxx.query(f"band == '{band}' and ROI == '{ROI_sel}' and term in {LMM_param_dict[effect_type]}").copy()
-            _df_plot['term'] = _df_plot['term'].replace(LMM_param_list_corres)
+            _df_plot = df_R_Pxx.query(
+                f"band == '{band}' and ROI == '{ROI_sel}' and term in {LMM_param_dict[effect_type]}"
+            ).copy()
 
+            _df_plot["term"] = _df_plot["term"].replace(LMM_param_list_corres)
             _df_plot["sig"] = _df_plot["pvalue"].apply(p_to_stars)
 
-            y_min, y_max = _df_plot["estimate"].min()*2, _df_plot["estimate"].max()*2
+            terms_order = [LMM_param_list_corres[_param] for _param in LMM_param_dict[effect_type]]
+            term_to_x = {term: i for i, term in enumerate(terms_order)}
 
-            if y_max < 0:
-                y_max = 0.1
-            if 0 < y_min:
-                y_min = -0.1
-            
-            for phase_cycle in _df_plot["phase_cycle"].unique():
+            phases = list(_df_plot["phase_cycle"].unique())
 
-                df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle]
+            # phase/hue values close together within each term
+            phase_offsets = dict(zip(phases, np.linspace(-0.12, 0.12, len(phases))))
 
-                fig.add_bar(
-                    x=df_term["term"],
+            # include SE in y-axis limits
+            y_min = (_df_plot["estimate"] - _df_plot["std.error"]).min()
+            y_max = (_df_plot["estimate"] + _df_plot["std.error"]).max()
+
+            y_range = y_max - y_min
+            if y_range == 0:
+                y_range = 1
+
+            star_offset = 0.04 * y_range
+            margin = 0.15 * y_range
+
+            for phase_cycle in phases:
+
+                df_term = _df_plot[_df_plot["phase_cycle"] == phase_cycle].copy()
+
+                x_pos = np.array([term_to_x[term] for term in df_term["term"]]) + phase_offsets[phase_cycle]
+
+                # beta estimate + SE
+                fig.add_scatter(
+                    x=x_pos,
                     y=df_term["estimate"],
+                    mode="markers",
                     name=phase_cycle,
+                    marker=dict(
+                        color=color_map[phase_cycle],
+                        size=10
+                    ),
+                    error_y=dict(
+                        type="data",
+                        array=df_term["std.error"],
+                        visible=True,
+                        color=color_map[phase_cycle],
+                        thickness=1.5,
+                        width=4
+                    ),
+                    showlegend=(c == 1),
+                    row=1,
+                    col=c
+                )
+
+                # significance stars above SE
+                fig.add_scatter(
+                    x=x_pos,
+                    y=df_term["estimate"] + df_term["std.error"] + star_offset,
+                    mode="text",
                     text=df_term["sig"],
-                    textposition="outside",
-                    marker_color=color_map[phase_cycle],
+                    textposition="top center",
+                    textfont=dict(size=16),
+                    showlegend=False,
+                    hoverinfo="skip",
                     row=1,
                     col=c
                 )
 
-                fig.update_yaxes(
-                    range=[y_min, y_max],
-                    tickfont=dict(size=14),
-                    row=r,
-                    col=1
-                )
+            y_lower = min(y_min - margin, -0.1)
+            y_upper = max(y_max + 2 * margin, 0.1)
 
-                fig.update_xaxes(
-                    categoryorder="array",
-                    categoryarray=[LMM_param_list_corres[_param] for _param in LMM_param_dict[effect_type]],
-                    tickangle=-45,
-                    tickfont=dict(size=14),
-                    row=1,
-                    col=c
-                )
-
-        if effect_type == 'COND':
-            fig.update_layout(
-            title=f"{ROI_title} all band",
-            template="simple_white",
-            barmode="group",
-            yaxis_title="estimate",
-            legend_title="phase_cycle",
-            height=500,
-            width=400 * len(LMM_param_dict[effect_type]),
+            fig.update_yaxes(
+                range=[y_lower, y_upper],
+                title_text="β estimate" if c == 1 else None,
+                tickfont=dict(size=14),
+                zeroline=True,
+                zerolinecolor="grey",
+                zerolinewidth=1,
+                row=1,
+                col=c
             )
 
-        if effect_type == 'OC_RATIO':
+            fig.update_xaxes(
+                tickmode="array",
+                tickvals=list(range(len(terms_order))),
+                ticktext=terms_order,
+                tickangle=-45,
+                tickfont=dict(size=14),
+                row=1,
+                col=c
+            )
+
+        if effect_type == "COND":
             fig.update_layout(
-            title=f"{ROI_title} all band",
-            template="simple_white",
-            barmode="group",
-            yaxis_title="estimate",
-            legend_title="phase_cycle",
-            height=500,
-            width=300 * len(LMM_param_dict[effect_type]),
+                title=f"{ROI_title} all band",
+                template="simple_white",
+                legend_title="phase_cycle",
+                height=500,
+                width=400 * len(band_list)
+            )
+
+        if effect_type == "OC_RATIO":
+            fig.update_layout(
+                title=f"{ROI_title} all band",
+                template="simple_white",
+                legend_title="phase_cycle",
+                height=500,
+                width=effect_type_size[effect_type]
             )
 
         # fig.show()

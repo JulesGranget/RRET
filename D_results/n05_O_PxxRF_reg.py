@@ -567,6 +567,7 @@ def export_res_LMM_reg_OC_ALLCOND():
                     df_LMM_OC.append(pd.read_excel(_filename))
 
     df_LMM_OC = pd.concat(df_LMM_OC)
+    df_LMM_OC.to_excel(os.path.join(path_results, 'figure_paper', 'df', f"fig05_OC.xlsx"))
     
     label_name_nsujet = {}
     
@@ -768,6 +769,264 @@ def export_res_LMM_reg_OC_ALLCOND():
         filepath = os.path.join(path_paper_figure_export, f"fig05b_ALLCOND_REG_RF_{band}_{phase_protocol}.svg")
         fig_paper.write_image(filepath)
 
+    #### only reg
+    color_map = {
+        "inspi": "#1f77b4",
+        "expi":  "#d62728" 
+    }
+
+    margin_factor = 0.2
+
+    for band in band_list_short:
+
+        df_LMM_paper = df_LMM_OC_short.query(f"band == '{band}'").copy()
+
+        df_LMM_paper["term"] = df_LMM_paper["term"].replace({
+            "rf_metric_val": "regression",
+            "condoc_chl": "Ch-effect",
+            "rf_metric_val:condoc_chl": "regression:Ch interaction"
+        })
+
+        df_LMM_paper["ROI"] = [
+            f"{_ROI_chunk[0]} {_ROI_chunk[1]}"
+            for _ROI_chunk in [_ROI.split(" ") for _ROI in df_LMM_paper["ROI"].values]
+        ]
+
+        estimate_list = ["regression"]
+        paper_list_rf_metrics = ["oc_ratio"]
+
+        fig_paper = make_subplots(
+            rows=len(estimate_list),
+            cols=len(paper_list_rf_metrics),
+            shared_yaxes=False,
+            vertical_spacing=0.03
+        )
+
+        for col_i, rf_metric in enumerate(paper_list_rf_metrics, start=1):
+
+            for row_i, estimate in enumerate(estimate_list, start=1):
+
+                df_sub = df_LMM_paper.query(f"rf_metric == '{rf_metric}' and term == '{estimate}'").copy()
+                df_sub["sig"] = df_sub["p.value"].apply(p_to_stars)
+
+                phases = [phase for phase in phase_cycle_list if phase in df_sub["phase_cycle"].unique()]
+
+                # phases close together inside each ROI
+                phase_offsets = dict(zip(phases, np.linspace(-0.12, 0.12, len(phases))))
+
+                # ROI centers
+                roi_to_x = {roi: i for i, roi in enumerate(ROI_order)}
+
+                # include SE in axis limits
+                y_min = (df_sub["estimate"] - df_sub["std.error"]).min()
+                y_max = (df_sub["estimate"] + df_sub["std.error"]).max()
+                y_range = y_max - y_min
+
+                star_offset = 0.04 * y_range
+                margin = 0.15 * y_range
+
+                for phase_cycle in phases:
+
+                    df_c = df_sub.query(f"phase_cycle == '{phase_cycle}'").copy()
+
+                    x_pos = np.array([roi_to_x[roi] for roi in df_c["ROI"]]) + phase_offsets[phase_cycle]
+
+                    # β estimate + SE
+                    fig_paper.add_scatter(
+                        x=x_pos,
+                        y=df_c["estimate"],
+                        mode="markers",
+                        name=phase_cycle,
+                        marker=dict(
+                            color=color_map[phase_cycle],
+                            size=10
+                        ),
+                        error_y=dict(
+                            type="data",
+                            array=df_c["std.error"],
+                            visible=True,
+                            color=color_map[phase_cycle],
+                            thickness=1.5,
+                            width=4
+                        ),
+                        showlegend=False,
+                        row=row_i,
+                        col=col_i
+                    )
+
+                    # significance stars above SE
+                    fig_paper.add_scatter(
+                        x=x_pos,
+                        y=df_c["estimate"] + df_c["std.error"] + star_offset,
+                        mode="text",
+                        text=df_c["sig"],
+                        textposition="top center",
+                        textfont=dict(size=16),
+                        showlegend=False,
+                        hoverinfo="skip",
+                        row=row_i,
+                        col=col_i
+                    )
+
+                fig_paper.update_yaxes(
+                    range=[y_min - margin, y_max + 2 * margin],
+                    title_text="β estimate",
+                    zeroline=True,
+                    zerolinecolor="grey",
+                    zerolinewidth=1,
+                    row=row_i,
+                    col=col_i
+                )
+
+                fig_paper.update_xaxes(
+                    tickmode="array",
+                    tickvals=list(range(len(ROI_order))),
+                    ticktext=ROI_order,
+                    tickangle=-45,
+                    showticklabels=(row_i == len(estimate_list)),
+                    row=row_i,
+                    col=col_i
+                )
+
+        fig_paper.update_layout(
+            template="simple_white",
+            height=420 * len(estimate_list),
+            width=420 * len(paper_list_rf_metrics),
+            title=f"{phase_protocol} {band}",
+            showlegend=False
+        )
+
+        # fig_paper.show()
+
+        filepath = os.path.join(path_paper_figure_export, f"fig05b_ALLCOND_REG_RF_{band}_{phase_protocol}_betaestimate.svg")
+        fig_paper.write_image(filepath)
+
+    #### only interaction
+    color_map = {
+        "inspi": "#1f77b4",
+        "expi":  "#d62728" 
+    }
+
+    margin_factor = 0.2
+
+    for band in band_list_short:
+
+        df_LMM_paper = df_LMM_OC_short.query(f"band == '{band}'").copy()
+
+        df_LMM_paper["term"] = df_LMM_paper["term"].replace({
+            "rf_metric_val": "regression",
+            "condoc_chl": "Ch-effect",
+            "rf_metric_val:condoc_chl": "regression:Ch interaction"
+        })
+
+        df_LMM_paper["ROI"] = [
+            f"{_ROI_chunk[0]} {_ROI_chunk[1]}"
+            for _ROI_chunk in [_ROI.split(" ") for _ROI in df_LMM_paper["ROI"].values]
+        ]
+
+        estimate_list = ["regression:Ch interaction"]
+        paper_list_rf_metrics = ["oc_ratio"]
+
+        fig_paper = make_subplots(
+            rows=len(estimate_list),
+            cols=len(paper_list_rf_metrics),
+            shared_yaxes=False,
+            vertical_spacing=0.03
+        )
+
+        for col_i, rf_metric in enumerate(paper_list_rf_metrics, start=1):
+
+            for row_i, estimate in enumerate(estimate_list, start=1):
+
+                df_sub = df_LMM_paper.query(f"rf_metric == '{rf_metric}' and term == '{estimate}'").copy()
+                df_sub["sig"] = df_sub["p.value"].apply(p_to_stars)
+
+                phases = [phase for phase in phase_cycle_list if phase in df_sub["phase_cycle"].unique()]
+
+                phase_offsets = dict(zip(phases, np.linspace(-0.12, 0.12, len(phases))))
+                roi_to_x = {roi: i for i, roi in enumerate(ROI_order)}
+
+                y_min = (df_sub["estimate"] - df_sub["std.error"]).min()
+                y_max = (df_sub["estimate"] + df_sub["std.error"]).max()
+
+                y_range = y_max - y_min
+                star_offset = 0.04 * y_range
+                margin = 0.15 * y_range
+
+                for phase_cycle in phases:
+
+                    df_c = df_sub.query(f"phase_cycle == '{phase_cycle}'").copy()
+
+                    x_pos = np.array([roi_to_x[roi] for roi in df_c["ROI"]]) + phase_offsets[phase_cycle]
+
+                    fig_paper.add_scatter(
+                        x=x_pos,
+                        y=df_c["estimate"],
+                        mode="markers",
+                        name=phase_cycle,
+                        marker=dict(
+                            color=color_map[phase_cycle],
+                            size=10
+                        ),
+                        error_y=dict(
+                            type="data",
+                            array=df_c["std.error"],
+                            visible=True,
+                            color=color_map[phase_cycle],
+                            thickness=1.5,
+                            width=4
+                        ),
+                        showlegend=False,
+                        row=row_i,
+                        col=col_i
+                    )
+
+                    fig_paper.add_scatter(
+                        x=x_pos,
+                        y=df_c["estimate"] + df_c["std.error"] + star_offset,
+                        mode="text",
+                        text=df_c["sig"],
+                        textposition="top center",
+                        textfont=dict(size=16),
+                        showlegend=False,
+                        hoverinfo="skip",
+                        row=row_i,
+                        col=col_i
+                    )
+
+                fig_paper.update_yaxes(
+                    range=[y_min - margin, y_max + 2 * margin],
+                    title_text="β estimate",
+                    zeroline=True,
+                    zerolinecolor="grey",
+                    zerolinewidth=1,
+                    row=row_i,
+                    col=col_i
+                )
+
+                fig_paper.update_xaxes(
+                    tickmode="array",
+                    tickvals=list(range(len(ROI_order))),
+                    ticktext=ROI_order,
+                    tickangle=-45,
+                    showticklabels=(row_i == len(estimate_list)),
+                    row=row_i,
+                    col=col_i
+                )
+
+        fig_paper.update_layout(
+            template="simple_white",
+            height=420 * len(estimate_list),
+            width=420 * len(paper_list_rf_metrics),
+            title=f"{phase_protocol} {band}",
+            showlegend=False
+        )
+
+        # fig_paper.show()
+
+        filepath = os.path.join(path_paper_figure_export, f"fig05d_ALLCOND_REG_RF_{band}_{phase_protocol}_INTERACTIONbetaestimate.svg")
+        fig_paper.write_image(filepath)
+
     #### export df values
     df_export = df_LMM_OC_short.query(f"ROI in {ROI_plot_short_list} and term != '(Intercept)' and rf_metric == 'oc_ratio'")
     
@@ -945,6 +1204,103 @@ def export_res_LMM_reg_OC_UNIQUECOND():
     df_export.to_excel(filename)
 
 
+def export_reg_PXX_preAMP_COND_OC():
+
+    #### generate df
+    #### params
+    sujet_thresh = 3
+    band_list_short = ['theta', 'beta', 'gamma']
+    phase_cycle_list = ["inspi", "expi"]
+
+    #### load df
+    df_Pxx_oc_preAMP = pd.read_excel(os.path.join(path_precompute, 'TF', 'session', 'df_R', f"df_R_Pxx_oc_preAMP.xlsx"))
+    df_Pxx_oc_preAMP['cond'] = df_Pxx_oc_preAMP['cond'].replace({'rsp_ctrl' : 'RB', 'rsp_chl' : 'Ch', 'oc_ctrl' : 'O', 'oc_chl' : 'O+Ch'})
+
+    # df_Pxx_oc_preAMP.query(f"cond in ['O', 'O+Ch']")[['sujet', 'ROI', 'band', 'phase_cycle', 'cond', 'Pxx', 'oc_ratio', 'pre_total_amplitude']].to_excel(os.path.join(path_results, f"df_Pxx_oc_preAMP.xlsx"))
+    
+    folder_import_dir = os.path.join(path_results, 'LMM', 'df')
+
+    df_loca_allsujet = get_df_loca_allsujet()
+
+    df_LMM_OC_preAMP_COND_Pxx = []
+
+    for phase_cycle_sel in phase_cycle_list:
+                        
+        for band in band_list_short:
+        
+            for ROI in ROI_short_list:
+
+                _filename = os.path.join(folder_import_dir, f"OC_PXX_PREAMP_COND_RES_{band}_{phase_cycle_sel}_{ROI}_LMM.xlsx")                
+                df_LMM_OC_preAMP_COND_Pxx.append(pd.read_excel(_filename))
+
+    df_LMM_OC_preAMP_COND_Pxx = pd.concat(df_LMM_OC_preAMP_COND_Pxx)
+    # df_LMM_OC_preAMP_COND_Pxx.to_excel(os.path.join(path_results, f"df_LMM_OC_preAMP_COND_Pxx_grouped.xlsx"))
+
+    label_name_nsujet = {}
+    
+    for ROI in ROI_short_list:
+
+        _nsujet = df_loca_allsujet.query(f"loca == '{ROI}'")['sujet'].unique().size
+        _ncontact = df_loca_allsujet.query(f"loca == '{ROI}'").groupby("sujet").count()['chan'].sum()        
+
+        label_name_nsujet[ROI] = f"{ROI} s({_nsujet}) c({_ncontact})"
+
+    for ROI in ROI_short_list:
+        df_LMM_OC_preAMP_COND_Pxx['ROI'] = df_LMM_OC_preAMP_COND_Pxx['ROI'].replace({ROI: label_name_nsujet[ROI]})
+        df_Pxx_oc_preAMP['ROI'] = df_Pxx_oc_preAMP['ROI'].replace({ROI: label_name_nsujet[ROI]})
+
+    df_ROI_scount = df_loca_allsujet.groupby('loca').nunique('sujet')['sujet'].reset_index(name='count')
+
+    for ROI in ROI_short_list:
+        df_ROI_scount['loca'] = df_ROI_scount['loca'].replace({ROI: label_name_nsujet[ROI]})
+
+    localist_thresh = df_ROI_scount.query(f"count >= {sujet_thresh}")['loca'].values.tolist()
+
+    ROI_plot_short_list = []
+
+    for _ROI_thresh in localist_thresh:
+        for _ROI_short in ROI_short_list:
+            if _ROI_thresh.find(_ROI_short) != -1:
+                ROI_plot_short_list.append(_ROI_thresh)
+
+    df_LMM_OC_preAMP_COND_Pxx_short = df_LMM_OC_preAMP_COND_Pxx.query(f"ROI in {ROI_plot_short_list}")
+    df_LMM_OC_preAMP_COND_Pxx_short = df_LMM_OC_preAMP_COND_Pxx_short.rename(columns={'p.value' : 'pvalue'})
+
+    df_Pxx_oc_preAMP_short = df_Pxx_oc_preAMP.query(f"ROI in {ROI_plot_short_list}")
+
+    for term in df_LMM_OC_preAMP_COND_Pxx_short['term'].unique():
+        print(df_LMM_OC_preAMP_COND_Pxx_short.query(f"pvalue < 0.05 and term == '{term}'"))
+    
+    # df_LMM_OC_preAMP_COND_Pxx_short.query(f"pvalue < 0.05 and term == 'oc_ratio:condoc_chl:pre_total_amplitude'").to_excel(os.path.join(path_results , 'df_test.xlsx'))
+    # df_LMM_OC_preAMP_COND_Pxx_short.query(f"pvalue < 0.05 and term == 'oc_ratio'")
+    # df_LMM_OC_preAMP_COND_Pxx_short.query(f"pvalue < 0.05 and ROI == 'medialorbitofrontal s(5) c(7)'")
+
+    #### plot
+    for ROI in ROI_plot_short_list:
+
+        for band in band_list_short:
+
+            for phase_sel in phase_cycle_list:
+
+                df_plot = df_Pxx_oc_preAMP_short.query(f"ROI == '{ROI}' and band == '{band}' and phase_cycle == '{phase_sel}' and cond in ['O', 'O+Ch']")
+
+                sns.lmplot(data=df_plot, x='pre_total_amplitude', y='Pxx', hue='cond')
+                pval = df_LMM_OC_preAMP_COND_Pxx_short.query(f"ROI == '{ROI}' and band == '{band}' and phase_cycle == '{phase_sel}' and term == 'condoc_chl:pre_total_amplitude'")['pvalue'].iloc[0]
+                plt.suptitle(f"{ROI} {band} {phase_sel} cond:preAMP : {np.round(pval, 3)}")
+                plt.show()
+
+    
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -964,6 +1320,7 @@ if __name__ == '__main__':
     export_res_LMM_reg_OC_UNIQUECOND()
 
     export_reg_OC_example()
+    export_reg_PXX_preAMP_COND_OC()
 
 
 

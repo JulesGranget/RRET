@@ -55,6 +55,79 @@ def export_Pxx_df():
 
 
 
+################################
+######## EXPORT PREAMP ########
+################################
+
+def export_Pxx_preamp_df():
+
+    df_Pxx_oc_preAMP = []
+        
+    for band in freq_band_dict:
+
+        print(band)
+        
+        #### load
+        os.chdir(os.path.join(path_precompute, 'TF', 'session'))
+
+        df_band_Pxx_allsujet = []
+
+        for sujet in sujet_list:
+
+            _xr = xr.open_dataarray(f"{sujet}_xr_Pxx.nc").sel(pre_post='post', band=band).rename({'phase' : 'phase_cycle'})
+            _xr_whole = _xr.median('phase_cycle').expand_dims(phase_cycle=['whole'])
+            _xr_allphase = xr.concat([_xr, _xr_whole], dim='phase_cycle')
+
+            df_band_Pxx_allsujet.append(_xr_allphase.to_dataframe().reset_index().dropna())
+
+        df_band_Pxx_allsujet = pd.concat(df_band_Pxx_allsujet)
+
+        df_band_Pxx_allsujet = df_band_Pxx_allsujet.query(f"ROI in {ROI_short_list}")
+        df_band_Pxx_allsujet = df_band_Pxx_allsujet.query(f"phase_cycle in ['inspi', 'expi']")
+        df_band_Pxx_allsujet = df_band_Pxx_allsujet[['sujet', 'ROI', 'chan', 'band', 'phase_cycle', 'cycle', 'cond', 'Pxx']]
+        df_band_Pxx_allsujet = df_band_Pxx_allsujet.reset_index(drop=True)
+        df_band_Pxx_allsujet = df_band_Pxx_allsujet.rename(columns={'cycle' : 'cycle_i'})
+
+        df_oc_preAMP = []
+
+        for sujet in sujet_list:
+        
+            # load respiration features
+            os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
+            _oc_respfeatures = pd.read_excel(f'{sujet}_df_oc.xlsx')
+            _respfeatures_pre = pd.read_excel(f'{sujet}_respfeatures_cleaned_label_pre.xlsx')[['sujet', 'cond', 'inspi_volume', 'expi_volume', 'total_volume', 'inspi_amplitude', 'expi_amplitude', 'total_amplitude']]
+            _respfeatures_pre = _respfeatures_pre.rename(columns={'inspi_volume' : 'pre_inspi_volume', 'expi_volume' : 'pre_expi_volume', 'total_volume' : 'pre_total_volume', 
+                                                          'inspi_amplitude' : 'pre_inspi_amplitude', 'expi_amplitude' : 'pre_expi_amplitude', 'total_amplitude' : 'pre_total_amplitude'})
+
+            cycle_i_list = []
+            cycle_i_count = 0
+            cond_val_buffer = _respfeatures_pre['cond'][0]
+
+            for cond_val in _respfeatures_pre['cond']:
+
+                if cond_val != cond_val_buffer:
+                    cycle_i_count = 0
+                    
+                cycle_i_list.append(cycle_i_count)
+                cycle_i_count += 1
+                cond_val_buffer = cond_val
+
+            _respfeatures_pre['cycle_i'] = cycle_i_list
+
+            df_oc_preAMP.append(pd.merge(left=_oc_respfeatures, right=_respfeatures_pre, how='inner'))
+
+        df_oc_preAMP = pd.concat(df_oc_preAMP).reset_index(drop=True).drop(columns='Unnamed: 0')
+
+        df_Pxx_oc_preAMP.append(pd.merge(left=df_band_Pxx_allsujet, right=df_oc_preAMP, how='inner'))
+
+    df_Pxx_oc_preAMP = pd.concat(df_Pxx_oc_preAMP)
+
+    #### export
+    os.chdir(os.path.join(path_precompute, 'TF', 'session', 'df_R'))
+    df_Pxx_oc_preAMP.to_excel(f"df_R_Pxx_oc_preAMP.xlsx")
+
+    
+
 
 
 
@@ -765,6 +838,12 @@ def get_reg_allROI():
 
 
 
+
+
+
+
+
+
 ################################
 ######## EXECUTE ########
 ################################
@@ -773,6 +852,7 @@ def get_reg_allROI():
 if __name__ == '__main__':
 
     export_Pxx_df()
+    export_Pxx_preamp_df()
     get_reg_allsujet()
 
     get_reg_allROI()

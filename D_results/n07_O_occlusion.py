@@ -357,100 +357,185 @@ def figure_oc_ratio_and_power():
     path_load_tf = os.path.join(path_precompute, 'TF', 'session')
     path_load_resp_cycle = os.path.join(path_precompute, 'RESP', 'session')
     path_load_ocratio = os.path.join(path_precompute, 'RESP', 'respfeatures')
+    path_load_ocratiopxx = os.path.join(path_precompute, 'TF', 'session', 'df_reg')
 
     #### get oc ratio extremum
     df_oc_ratio = pd.concat([pd.read_excel(os.path.join(path_load_ocratio, f"{sujet}_df_oc.xlsx")) for sujet in sujet_list]).drop(columns='Unnamed: 0')
     df_oc_ratio = df_oc_ratio.query(f"cond == 'oc_ctrl'")
     diff_oc_ratio = np.array([df_oc_ratio.query(f"sujet == '{sujet}'")['oc_ratio'].max() - df_oc_ratio.query(f"sujet == '{sujet}'")['oc_ratio'].min() for sujet in sujet_list])
-    sujet_sel = sujet_list[np.argmax(diff_oc_ratio)]
-    resp_cycle_i_list = [df_oc_ratio.query(f"sujet == '{sujet_sel}'")['oc_ratio'].argmin(), df_oc_ratio.query(f"sujet == '{sujet_sel}'")['oc_ratio'].argmax()]
+    df_oc_ratio_pxx = pd.read_excel(os.path.join(path_load_ocratiopxx, f"df_reg.xlsx")).query(f"rf_metric == 'oc_ratio' and phase_cycle in ['inspi', 'expi'] and phase_protocol == 'post'").reset_index(drop=True)
+
+    #### get sujet chan params
+    cond_sel = 'oc_ctrl'
+    df_ocratio_pxx_ctrl = df_oc_ratio_pxx.query(f"cond == '{cond_sel}' and rho_signi == 1 and phase_cycle == 'inspi'").reset_index(drop=True)
+    sujet_sel = df_ocratio_pxx_ctrl.sort_values('OLS_a').iloc[0]['sujet']
+    band_sel = df_ocratio_pxx_ctrl.sort_values('OLS_a').iloc[0]['band']
+    chan_sel = df_ocratio_pxx_ctrl.sort_values('OLS_a').iloc[0]['chan']
+    ROI_sel = df_ocratio_pxx_ctrl.sort_values('OLS_a').iloc[0]['ROI']
+    sujet_sel, band_sel, chan_sel, ROI_sel = 'NS213', 'theta', 'RFo1', 'medialorbitofrontal'
+
+    resp_cycle_max_i_list = [df_oc_ratio.query(f"sujet == '{sujet_sel}'")['oc_ratio'].argmin(), df_oc_ratio.query(f"sujet == '{sujet_sel}'")['oc_ratio'].argmax()]
 
     #### load
-    cond_sel = 'oc_ctrl'
     tf = np.load(os.path.join(path_load_tf, f"{sujet_sel}_{cond_sel}_tf_allchan_stretch_post.npy"))
     resp_cycle = np.load(os.path.join(path_load_resp_cycle, f"{sujet_sel}_{cond_sel}_stretch_resp_post.npy"))
     df_loca = get_df_loca_allsujet().query(f"sujet == '{sujet_sel}'").drop(columns='Unnamed: 0').reset_index()
 
     #### explore cycles
-    max_cycle = resp_cycle[resp_cycle_i_list[-1]]
+    max_cycle = resp_cycle[resp_cycle_max_i_list[-1]]
     
     for cycle_i in range(resp_cycle.shape[0]):
 
-        plt.plot(scipy.stats.zscore(max_cycle))
-        plt.plot(scipy.stats.zscore(resp_cycle[cycle_i]))
-        plt.title(cycle_i)
+        fig, ax = plt.subplots()
+        ax.plot(max_cycle)
+        ax.plot(resp_cycle[cycle_i])
+        plt.title(f"{cycle_i+1}/{resp_cycle.shape[0]}")
         plt.show()
 
-    resp_cycle_i_list = [13, resp_cycle_i_list[-1]] #7,13,20 good cycle 
+    # resp_cycle_max_i_list = [13, resp_cycle_max_i_list[-1]] #7,13,20 good cycle 
+    resp_cycle_max_i_list = [resp_cycle_max_i_list[0], resp_cycle_max_i_list[-1]] #7,13,20 good cycle 
 
     #### chunk
-    band_sel = 'theta'
     freq_sel_vec = (freq_band_dict[band_sel][0] < frex) & (frex < freq_band_dict[band_sel][1])
     tf_band = np.median(tf[:,:,freq_sel_vec], axis=2)
 
-    resp_cycle_chunk = resp_cycle[resp_cycle_i_list]
-    tf_band_chunk = scipy.signal.savgol_filter(tf_band[:,resp_cycle_i_list], window_length=20, polyorder=2, axis=-1)
+    tf_band_filt = scipy.signal.savgol_filter(tf_band, window_length=20, polyorder=2, axis=-1)
+    
+    chan_i_list = df_loca.query(f"loca == '{ROI_sel}'").index
+    
+    for chan_i in chan_i_list:
+
+        #resp_cycle_i = 0
+        for resp_cycle_i in range(resp_cycle.shape[0]):
+
+            print(resp_cycle_i)
+
+            loca = df_loca.iloc[chan_i]['loca']
+        
+            fig, axs = plt.subplots(ncols=2, figsize=(15,8))
+
+            resp_cycle_chunk = resp_cycle[resp_cycle_i]
+            tf_band_chunk = tf_band_filt[chan_i, resp_cycle_i].reshape(-1)
+
+            resp_cycle_min, resp_cycle_max = resp_cycle_chunk.min(), resp_cycle_chunk.max()
+            tf_band_min, tf_band_max = tf_band_chunk.min(), tf_band_chunk.max()
+            vmin, vmax = np.array([resp_cycle_min, tf_band_min]).min()*1.1, np.array([resp_cycle_max, tf_band_max]).max()*1.1
+
+            data_plot = {'resp' : resp_cycle_chunk, band_sel : tf_band_chunk}
+
+            for c, plot_type in enumerate(['resp', band_sel]):
+
+                ax = axs[c]
+
+                ax.plot(data_plot[plot_type])
+
+                ax.set_title(f"chan{chan_i}:{loca}, resp_i:{resp_cycle_i}, {plot_type}")
+                ax.set_ylim(vmin,vmax)
+                ax.vlines(int(stretch_point_TF/2), ymin=vmin, ymax=vmax, color='k')
+                ax.set_ylabel('zscore', fontsize=16)
+                ax.set_xlabel('Phase', fontsize=16)
+                ax.tick_params(axis="x", labelsize=16)
+                ax.tick_params(axis="y", labelsize=16)
+
+            plt.show()
 
     #### explore
-    ROI_sujet = [_loca for _loca in df_loca['loca'].unique() if _loca in ROI_short_list]
-    chan_i_sel = df_loca.query(f"loca in {ROI_sujet}").index
+    freq_sel_vec = (freq_band_dict[band_sel][0] < frex) & (frex < freq_band_dict[band_sel][1])
+    tf_band = np.median(tf[:,:,freq_sel_vec], axis=2)
 
-    for chan_i in chan_i_sel:
-
-        loca = df_loca.iloc[chan_i]['loca']
+    tf_band_filt = scipy.signal.savgol_filter(tf_band, window_length=20, polyorder=2, axis=-1)
     
-        fig, axs = plt.subplots(ncols=2, figsize=(15,8))
+    ROI_sujet = [_loca for _loca in df_loca['loca'].unique() if _loca in ROI_short_list]
+    max_cycle = resp_cycle[resp_cycle_max_i_list[-1]]
+    
+    chan_i_list = df_loca.query(f"loca == '{ROI_sel}'").index
+    
+    for chan_i in chan_i_list:
 
-        resp_cycle_min, resp_cycle_max = scipy.stats.zscore(resp_cycle_chunk, axis=1).min(), scipy.stats.zscore(resp_cycle_chunk, axis=1).max()
-        tf_band_min, tf_band_max = scipy.stats.zscore(tf_band_chunk[chan_i], axis=1).min(), scipy.stats.zscore(tf_band_chunk[chan_i], axis=1).max()
-        vmin, vmax = np.array([resp_cycle_min, tf_band_min]).min()*1.1, np.array([resp_cycle_max, tf_band_max]).max()*1.1
+        tf_max_cycle = tf_band_filt[chan_i, resp_cycle_max_i_list[-1]].reshape(-1)
 
-        data_plot = {'resp' : resp_cycle_chunk, band_sel : tf_band_chunk[chan_i]}
+        #resp_cycle_i = 0
+        for resp_cycle_i in range(resp_cycle.shape[0]):
 
-        for c, plot_type in enumerate(['resp', band_sel]):
+            print(resp_cycle_i)
 
-            ax = axs[c]
+            loca = df_loca.iloc[chan_i]['loca']
+        
+            fig, axs = plt.subplots(ncols=2, figsize=(15,8))
 
-            ax.plot(scipy.stats.zscore(data_plot[plot_type][0]))
-            ax.plot(scipy.stats.zscore(data_plot[plot_type][1]))
+            resp_cycle_chunk = resp_cycle[resp_cycle_i]
+            tf_band_chunk = tf_band_filt[chan_i, resp_cycle_i].reshape(-1)
 
-            ax.set_title(f"chan{chan_i}:{loca}, {plot_type}")
-            ax.set_ylim(vmin,vmax)
-            ax.vlines(int(stretch_point_TF/2), ymin=vmin, ymax=vmax, color='k')
-            ax.set_ylabel('zscore', fontsize=16)
-            ax.set_xlabel('Phase', fontsize=16)
-            ax.tick_params(axis="x", labelsize=16)
-            ax.tick_params(axis="y", labelsize=16)
+            resp_cycle_min, resp_cycle_max = np.min([max_cycle.min(), resp_cycle_chunk.min()]), np.max([max_cycle.max(), resp_cycle_chunk.max()])
+            tf_band_min, tf_band_max = np.min([tf_max_cycle.min(), tf_band_chunk.min()]), np.max([tf_max_cycle.max(), tf_band_chunk.max()])
+            vmin, vmax = np.array([resp_cycle_min, tf_band_min]).min()*1.1, np.array([resp_cycle_max, tf_band_max]).max()*1.1
 
-        plt.show()
+            data_plot = {'resp' : [resp_cycle_chunk, max_cycle], band_sel : [tf_band_chunk, tf_max_cycle]}
+
+            for c, plot_type in enumerate(['resp', band_sel]):
+
+                ax = axs[c]
+
+                ax.plot(data_plot[plot_type][0])
+                ax.plot(data_plot[plot_type][1])
+
+                ax.set_title(f"{sujet_sel}, chan{chan_i}:{loca}, resp_i:{resp_cycle_i}, {plot_type}")
+                ax.set_ylim(vmin,vmax)
+                ax.vlines(int(stretch_point_TF/2), ymin=vmin, ymax=vmax, color='k')
+                ax.set_ylabel('zscore', fontsize=16)
+                ax.set_xlabel('Phase', fontsize=16)
+                ax.tick_params(axis="x", labelsize=16)
+                ax.tick_params(axis="y", labelsize=16)
+
+            plt.show()
 
     #### save
-    chan_i_to_save = 98
+    sujet_sel, band_sel, ROI_sel = 'NS213', 'theta', 'medialorbitofrontal'
 
-    loca = df_loca.iloc[chan_i_to_save]['loca']
+    tf = np.load(os.path.join(path_load_tf, f"{sujet_sel}_{cond_sel}_tf_allchan_stretch_post.npy"))
+    resp_cycle = np.load(os.path.join(path_load_resp_cycle, f"{sujet_sel}_{cond_sel}_stretch_resp_post.npy"))
+    df_loca = get_df_loca_allsujet().query(f"sujet == '{sujet_sel}'").drop(columns='Unnamed: 0').reset_index()
+    freq_sel_vec = (freq_band_dict[band_sel][0] < frex) & (frex < freq_band_dict[band_sel][1])
+    tf_band = np.median(tf[:,:,freq_sel_vec], axis=2)
+    tf_band_filt = scipy.signal.savgol_filter(tf_band, window_length=20, polyorder=2, axis=-1)
+    max_cycle = resp_cycle[resp_cycle_max_i_list[-1]]
+    chan_i_list = df_loca.query(f"loca == '{ROI_sel}'").index
+    
+    chan_i_to_save = 111
+    resp_i_to_save = 7
+
+    resp_cycle_chunk = resp_cycle[resp_i_to_save]
+    tf_band_chunk = tf_band_filt[chan_i_to_save, resp_i_to_save].reshape(-1)
         
-    fig, axs = plt.subplots(ncols=2, figsize=(15,6))
+    fig, axs = plt.subplots(ncols=2, figsize=(15,8))
+    
+    resp_cycle_chunk = resp_cycle[resp_cycle_i]
+    tf_band_chunk = tf_band_filt[chan_i, resp_cycle_i].reshape(-1)
 
-    resp_cycle_min, resp_cycle_max = scipy.stats.zscore(resp_cycle_chunk, axis=1).min(), scipy.stats.zscore(resp_cycle_chunk, axis=1).max()
-    tf_band_min, tf_band_max = scipy.stats.zscore(tf_band_chunk[chan_i_to_save], axis=1).min(), scipy.stats.zscore(tf_band_chunk[chan_i_to_save], axis=1).max()
-    vmin, vmax = np.array([resp_cycle_min, tf_band_min]).min()*1.1, np.array([resp_cycle_max, tf_band_max]).max()*1.1
+    resp_cycle_min, resp_cycle_max = np.min([max_cycle.min(), resp_cycle_chunk.min()]), np.max([max_cycle.max(), resp_cycle_chunk.max()])
+    tf_band_min, tf_band_max = np.min([tf_max_cycle.min(), tf_band_chunk.min()]), np.max([tf_max_cycle.max(), tf_band_chunk.max()])
+    vlims_plot = {'resp' : [resp_cycle_min, resp_cycle_max], band_sel : [tf_band_min, tf_band_max]}
 
-    data_plot = {'resp' : resp_cycle_chunk, band_sel : tf_band_chunk[chan_i_to_save]}
+    data_plot = {'resp' : [resp_cycle_chunk, max_cycle], band_sel : [tf_band_chunk, tf_max_cycle]}
 
     for c, plot_type in enumerate(['resp', band_sel]):
 
         ax = axs[c]
 
-        ax.plot(scipy.stats.zscore(data_plot[plot_type][0]))
-        ax.plot(scipy.stats.zscore(data_plot[plot_type][1]))
+        ax.plot(data_plot[plot_type][0])
+        ax.plot(data_plot[plot_type][1])
 
-        ax.set_title(f"{sujet_sel}, chan{chan_i_to_save}:{loca}, {plot_type}")
-        ax.set_ylim(vmin,vmax)
-        ax.vlines(int(stretch_point_TF/2), ymin=vmin, ymax=vmax, color='k')
-        ax.set_ylabel('zscore', fontsize=16)
-        ax.set_xlabel('Phase', fontsize=16)
-        ax.tick_params(axis="x", labelsize=16)
+        ax.set_title(f"{sujet_sel}, chan{chan_i_to_save}:{ROI_sel}, {plot_type}")
+        # ax.set_ylim(vmin,vmax)
+        ax.vlines(int(stretch_point_TF/2), ymin=vlims_plot[plot_type][0], ymax=vlims_plot[plot_type][-1], color='k')
+        ax.set_ylabel('r-zscore', fontsize=16)
         ax.tick_params(axis="y", labelsize=16)
+
+        # ax.set_xticks([-np.pi, -np.pi/2, 0, np.pi/2, np.pi])
+        n = data_plot[plot_type][0].shape[-1]
+        ax.set_xticks([0, (n-1)/4, (n-1)/2, 3*(n-1)/4, n-1])
+        ax.set_xticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"], fontsize=16)
+        ax.set_xlabel("Phase (rad)", fontsize=16)
 
     # plt.show()
 
@@ -465,21 +550,48 @@ def figure_oc_ratio_to_power_reg():
     #### config
     path_load_df = os.path.join(path_precompute, 'TF', 'session', 'df_R', 'df_reg_ALLROI_ALLDATA_R.xlsx')
     path_load_ocratio = os.path.join(path_precompute, 'RESP', 'respfeatures')
+    path_load_ocratiopxx = os.path.join(path_precompute, 'TF', 'session', 'df_reg')
 
     #### get oc ratio extremum
     cond_sel = 'oc_ctrl'
     df_oc_ratio = pd.concat([pd.read_excel(os.path.join(path_load_ocratio, f"{sujet}_df_oc.xlsx")) for sujet in sujet_list]).drop(columns='Unnamed: 0')
     df_oc_ratio = df_oc_ratio.query(f"cond == '{cond_sel}'")
     diff_oc_ratio = np.array([df_oc_ratio.query(f"sujet == '{sujet}'")['oc_ratio'].max() - df_oc_ratio.query(f"sujet == '{sujet}'")['oc_ratio'].min() for sujet in sujet_list])
+    df_oc_ratio_pxx = pd.read_excel(os.path.join(path_load_ocratiopxx, f"df_reg.xlsx")).query(f"rf_metric == 'oc_ratio' and phase_cycle in ['inspi', 'expi']").reset_index(drop=True)
+    
+    #### get sujet chan params
+    cond_sel = 'oc_ctrl'
+    df_ocratio_pxx_ctrl = df_oc_ratio_pxx.query(f"cond == '{cond_sel}'")
     sujet_sel = sujet_list[np.argmax(diff_oc_ratio)]
+    sujet_sel = df_ocratio_pxx_ctrl.iloc[df_ocratio_pxx_ctrl['OLS_a'].argmax()]['sujet']
+    chan_sel = df_ocratio_pxx_ctrl.iloc[df_ocratio_pxx_ctrl['OLS_a'].argmax()]['chan']
+
+    #### load df stats
+    folder_import_dir = os.path.join(path_results, 'LMM', 'df')
+    band_list_short = ['theta', 'beta', 'gamma']
+
+    df_LMM_OC = []
+
+    for phase_cycle_sel in phase_cycle_list:
+                
+        for band in band_list_short:
+        
+            for ROI in ROI_short_list:
+
+                _filename = os.path.join(folder_import_dir, f"OC_ALLCOND_RES_{band}_post_{phase_cycle_sel}_oc_ratio_{ROI}_LMM.xlsx")
+                df_LMM_OC.append(pd.read_excel(_filename))
+
+    df_LMM_OC = pd.concat(df_LMM_OC)
 
     #### load
     df_reg = pd.read_excel(path_load_df)
+    df_reg.to_excel(os.path.join(path_results, 'figure_paper', 'df', f"fig05_reg_val.xlsx"))
+
+    #### plot explore
     df_reg_sujet = df_reg.query(f"sujet == '{sujet_sel}'")
     plot_ROI_list = [_loca for _loca in df_reg_sujet['ROI'].unique() if _loca in ROI_short_list]
     df_reg_sujet = df_reg_sujet.query(f"rf_metric == 'oc_ratio' and cond == '{cond_sel}' and ROI in {plot_ROI_list}")
-
-    #### plot explore
+    
     band_sel = 'theta'
     palette = {'inspi' : 'blue', 'expi' : 'red'}
 
@@ -503,28 +615,53 @@ def figure_oc_ratio_to_power_reg():
     plt.close('all')
 
     #### plot save
+    sujet_sel = 'NS206'
     band_sel = 'theta'
     ROI_sel = 'medialorbitofrontal'
     palette = {'inspi' : 'blue', 'expi' : 'red'}
+    cond_sel = 'oc_ctrl'
 
-    df_plot = df_reg_sujet.query(f"sujet == '{sujet_sel}' and band == '{band_sel}' and ROI == '{ROI_sel}'")
+    df_plot = df_reg.query(f"rf_metric == 'oc_ratio' and cond == '{cond_sel}' and ROI == '{ROI_sel}' and band == '{band_sel}'")
 
-    g = sns.lmplot(df_plot, x='rf_metric_val', y='Pxx', hue='phase_cycle', palette=palette, ci=False)
+    # g = sns.lmplot(df_plot, x='rf_metric_val', y='Pxx', hue='phase_cycle', palette=palette, ci=False)
 
-    for ax in g.axes.flat:
-        ax.tick_params(axis="x", labelsize=14)
-        ax.tick_params(axis="y", labelsize=14)
+    # for ax in g.axes.flat:
+    #     ax.tick_params(axis="x", labelsize=14)
+    #     ax.tick_params(axis="y", labelsize=14)
 
-        g.set_xlabels("oc_ratio", fontsize=16)
-        g.set_ylabels("Pxx", fontsize=16)
+    #     g.set_xlabels("oc_ratio", fontsize=16)
+    #     g.set_ylabels("Pxx", fontsize=16)
 
-    plt.suptitle(f"{sujet_sel}, {band_sel}, {ROI_sel}")
+    # plt.suptitle(f"{sujet_sel}, {band_sel}, {ROI_sel}")
 
     # plt.show()
 
-    plt.savefig(os.path.join(path_paper_figure_export, f"fig05a_patient_example_ocratio_reg.svg"))
+    palette = {'inspi' : None, 'expi' : 'red'}
 
-    plt.close('all')
+    for phase_cycle_sel in ['inspi', 'expi']:
+
+        _df_stat = df_LMM_OC.query(f"term == 'rf_metric_val' and band == '{band_sel}' and ROI == '{ROI_sel}' and phase_cycle == '{phase_cycle_sel}'")
+        _coeff, pval = _df_stat['estimate'].values[0], _df_stat['p.value'].values[0]
+
+        star = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else ""
+
+        g = sns.lmplot(df_plot.query(f"phase_cycle == '{phase_cycle_sel}'"), x='rf_metric_val', y='Pxx', scatter_kws={"color": palette[phase_cycle_sel]},
+                            line_kws={"color": palette[phase_cycle_sel]}, ci=False)
+        
+        for ax in g.axes.flat:
+            ax.tick_params(axis="x", labelsize=14)
+            ax.tick_params(axis="y", labelsize=14)
+            ax.text(0.95, 0.95, rf"$\beta difference$ = {_coeff:.2f}{star}", transform=ax.transAxes, ha="right", va="top", fontsize=16)
+
+            g.set_xlabels("oc_ratio", fontsize=16)
+            g.set_ylabels("Pxx", fontsize=16)
+
+        plt.suptitle(f"allsujet, {phase_cycle_sel}, {band_sel}, {ROI_sel}")
+        plt.tight_layout()
+
+        plt.savefig(os.path.join(path_paper_figure_export, f"fig05a_patient_example_ocratio_reg_{phase_cycle_sel}.svg"))
+
+        plt.close('all')
 
     #### plot allsujet explore
     band_sel = 'beta'
@@ -612,7 +749,67 @@ def figure_oc_ratio_to_power_reg():
 
     plt.close('all')
 
+    #### plot 2 conditions
+    df_reg_2cond = df_reg.query(f"rf_metric == 'oc_ratio'")
+    band_sel = 'beta'
+    ROI_sel = 'medialorbitofrontal'
+    phase_sel = 'inspi'
+    palette = {'oc_ctrl' : 'blue', 'oc_chl' : 'red'}
 
+    for band_sel in ['theta', 'beta', 'gamma']:
+    
+        for ROI_sel in plot_ROI_list:
+
+            for phase_sel in ['inspi', 'expi']:
+                        
+                df_plot = df_reg_2cond.query(f"band == '{band_sel}' and ROI == '{ROI_sel}' and cond in ['oc_ctrl', 'oc_chl'] and phase_cycle == '{phase_sel}'")
+
+                g = sns.lmplot(data=df_plot, x="rf_metric_val", y="Pxx", hue='cond', palette=palette, ci=None)
+                
+                for ax in g.axes.flat:
+                    ax.tick_params(axis="x", labelsize=14)
+                    ax.tick_params(axis="y", labelsize=14)
+
+                    g.set_xlabels("oc_ratio", fontsize=16)
+                    g.set_ylabels("Pxx", fontsize=16)
+
+                plt.suptitle(f"{band_sel}, {ROI_sel}, {phase_sel}", fontsize=18)
+
+                plt.tight_layout()
+                plt.show()
+        
+    plt.close('all')
+
+    df_reg_2cond = df_reg.query(f"rf_metric == 'oc_ratio'")
+    band_sel = 'beta'
+    ROI_sel = 'medialorbitofrontal'
+    phase_sel = 'inspi'
+    palette = {'oc_ctrl' : 'blue', 'oc_chl' : 'red'}
+    
+    for phase_sel in ['inspi', 'expi']:
+                
+        df_plot = df_reg_2cond.query(f"band == '{band_sel}' and ROI == '{ROI_sel}' and cond in ['oc_ctrl', 'oc_chl'] and phase_cycle == '{phase_sel}'")
+        _df_stat = df_LMM_OC.query(f"term == 'rf_metric_val:condoc_chl' and band == '{band_sel}' and ROI == '{ROI_sel}' and phase_cycle == '{phase_sel}'")
+        _coeff, pval = _df_stat['estimate'].values[0], _df_stat['p.value'].values[0]
+
+        star = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else ""
+
+        g = sns.lmplot(data=df_plot, x="rf_metric_val", y="Pxx", hue="cond", palette=palette, ci=None)
+
+        for ax in g.axes.flat:
+            ax.tick_params(axis="x", labelsize=14)
+            ax.tick_params(axis="y", labelsize=14)
+            ax.text(0.95, 0.95, rf"$\beta difference$ = {_coeff:.2f}{star}", transform=ax.transAxes, ha="right", va="top", fontsize=16)
+
+        g.set_xlabels("oc_ratio", fontsize=16)
+        g.set_ylabels("Pxx", fontsize=16)
+
+        plt.suptitle(f"{band_sel}, {ROI_sel}, {phase_sel}", fontsize=18)
+        plt.tight_layout()
+
+        # plt.show()
+
+        plt.savefig(os.path.join(path_paper_figure_export, f"fig05c_example_load_reg_{phase_sel}.svg"))
 
 
 

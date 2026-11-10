@@ -49,6 +49,7 @@ def get_data_sujet_fullsig(sujet):
 
         data_epoch = np.transpose(data['RRBO'][0,0]['eeg'][:], (0,2,1)) #chan, breaths, time points 
         resp_epoch = np.transpose(data['RRBO'][0,0]['pressure'][:], (1,0))
+        co2_epoch = np.transpose(data['RRBO'][0,0]['co2'][:], (1,0))
         
         chanlist = np.array([_chan[0][0] for _chan in data['RRBO'][0,0]['labels']])
         localist = np.array([_chan[0][0] for _chan in data['RRBO'][0,0]['labelsFSurf']])
@@ -64,6 +65,7 @@ def get_data_sujet_fullsig(sujet):
 
             data_epoch = np.transpose(data['eeg'][:], (2,0,1))
             resp_epoch = data['pressure'][:]
+            co2_epoch = data['co2'][:]
 
             chanlist = np.array(["".join(chr(c) for c in f[_ref][:].flatten()) for _ref in data['labels'][0]])
             localist = np.array(["".join(chr(c) for c in f[_ref][:].flatten()) for _ref in data['labelsFSurf'][0]])
@@ -77,7 +79,86 @@ def get_data_sujet_fullsig(sujet):
     chanlist = chanlist[mask_loca_sujet]
     localist = localist[mask_loca_sujet]
 
-    return data_epoch, resp_epoch, chanlist, localist
+    return data_epoch, resp_epoch, co2_epoch, chanlist, localist
+
+
+
+#sujet = sujet_list[0]
+def get_data_sujet_resp_fullsig(sujet):
+
+    print(f"open data {sujet}")
+    os.chdir(os.path.join(path_prep))
+
+    sujet_list_flow_corrected = ['NS203']
+
+    # time vec : 0 start of the inspiration
+
+    # trial : trial number
+    # occlusionType	:  0 no occlusion, 1 control occulusion, 2 occlusion
+    # isControl : 1 True, 0 False
+    # isChallenge : 1 True, 0 False
+    # isRelief : 1 True, 0 False
+    # trialUnpleasantness : 0 - 10 after each trial
+    # trialAnxiety : 0 - 10 after each trial
+    # trialAnxietySource  : 4 breathing effort, lack of air, neither or both
+    # isGoodTrial : 0 bad 1 good 	
+    # isGoodBreath : 0 bad 1 good
+
+    try:
+        data = scipy.io.loadmat(f"RRBO_{sujet}.mat")
+        print('open loadmat')
+        print(data.keys())
+        print(data['RRBO'][0,0].dtype.names)
+        data['RRBO'][0,0]['pressure']
+
+        data_epoch = np.transpose(data['RRBO'][0,0]['eeg'][:], (0,2,1)) #chan, breaths, time points 
+        press_epoch = np.transpose(data['RRBO'][0,0]['pressure'][:], (1,0))
+        iAF_epoch = np.transpose(data['RRBO'][0,0]['iflow'][:], (1,0))
+        eAF_epoch = np.transpose(data['RRBO'][0,0]['eflow'][:], (1,0))
+        co2_epoch = np.transpose(data['RRBO'][0,0]['co2'][:], (1,0))
+        
+        chanlist = np.array([_chan[0][0] for _chan in data['RRBO'][0,0]['labels']])
+        localist = np.array([_chan[0][0] for _chan in data['RRBO'][0,0]['labelsFSurf']])
+
+    except:
+        # print('open h5py')
+        with h5py.File(f"RRBO_{sujet}.mat", "r") as f:
+
+            print(list(f.keys()))
+
+            data = f["RRBO"]
+            print(list(data.keys()))
+
+            data_epoch = np.transpose(data['eeg'][:], (2,0,1))
+            press_epoch = data['pressure'][:]
+            if sujet not in sujet_list_flow_corrected:
+                iAF_epoch = data['iflow'][:]
+                eAF_epoch = data['eflow'][:]
+            else:
+                AF_epoch = data['flow'][:]
+            co2_epoch = data['co2'][:]
+
+            chanlist = np.array(["".join(chr(c) for c in f[_ref][:].flatten()) for _ref in data['labels'][0]])
+            localist = np.array(["".join(chr(c) for c in f[_ref][:].flatten()) for _ref in data['labelsFSurf'][0]])
+
+    #### construct flow
+    if sujet not in sujet_list_flow_corrected:
+        AF_epoch = iAF_epoch * -1 + eAF_epoch
+
+    if debug:
+        plt.plot(AF_epoch[0])
+        plt.show()
+
+    #### remove bad chans
+    df_loca_allsujet = get_df_loca_allsujet_raw()
+    df_loca_sujet = df_loca_allsujet.query(f"sujet == '{sujet}'")
+    mask_loca_sujet = np.where(df_loca_sujet['Select'] == 1)[0]
+
+    data_epoch = data_epoch[mask_loca_sujet]
+    chanlist = chanlist[mask_loca_sujet]
+    localist = localist[mask_loca_sujet]
+
+    return data_epoch, press_epoch, AF_epoch, co2_epoch, chanlist, localist
 
 
 

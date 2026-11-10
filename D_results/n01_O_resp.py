@@ -7,7 +7,9 @@ from A_config.n02_O_analysis_functions import *
 from A_config.n03_X_manip_data import *
 
 
-
+from statsmodels.stats.anova import AnovaRM
+import pingouin as pg
+import statsmodels.formula.api as smf
 
 
 
@@ -206,6 +208,25 @@ def export_respi_allsujet():
             _rzscore = (_sujet_cond_allcycles - _med) * 0.6745 / _mad
             resp_data[sujet_i,cond_i] = np.median(_rzscore, axis=0)
 
+    #### stats
+    respfeatures = pd.concat([pd.read_excel(os.path.join(path_precompute, 'RESP', 'respfeatures', f'{sujet}_respfeatures_cleaned_label.xlsx')) for sujet in sujet_list])
+    respfeatures = respfeatures[['sujet', 'cond', 'inspi_volume', 'expi_volume']]
+    
+    df_stats_resp = []
+
+    for resp_phase in ['inspi', 'expi']:
+
+        aov = pg.rm_anova(data=respfeatures[['sujet', 'cond', f'{resp_phase}_volume']], dv=f"{resp_phase}_volume", within="cond", subject="sujet", detailed=True)
+        posthoc = pg.pairwise_tests(data=respfeatures, dv=f"{resp_phase}_volume", within="cond", subject="sujet", parametric=False, padjust="holm")
+        posthoc['pre_hoc'] = ['rmANOVA'] * posthoc.shape[0]
+        posthoc['pre_hoc_pval'] = [aov["p_unc"].iloc[0]] * posthoc.shape[0]
+        posthoc['cond'] = [resp_phase] * posthoc.shape[0]
+        df_stats_resp.append(posthoc)
+    
+    df_stats_resp = pd.concat(df_stats_resp)
+
+    mdl = smf.mixedlm("inspi_volume ~ C(cond, Treatment(reference='rsp_ctrl'))", data=respfeatures, groups=respfeatures["sujet"]).fit()
+
     #### plot
     time_vec = np.arange(stretch_point_TF)
     label_line_cond_dict = {'rsp_ctrl' : {'linestyle' : '--', 'color' : 'r'}, 
@@ -291,6 +312,59 @@ def export_respi_allsujet():
 
 
 
+################################
+######## CO2 ########
+################################
+
+def export_CO2_res():
+
+    #### load
+    os.chdir(os.path.join(path_precompute, 'RESP', 'respfeatures')) 
+    df_respfeatures = pd.concat([pd.read_excel(f"{sujet}_respfeatures_cleaned_label.xlsx") for sujet in sujet_list])[['sujet', 'cond', 'etCO2']]
+    df_respfeatures = df_respfeatures.query(f"cond in ['rsp_ctrl', 'rsp_chl']")
+
+    #### stats
+    stat, pval = scipy.stats.mannwhitneyu(x=df_respfeatures.query(f"cond == 'rsp_chl'")['etCO2'].values, y=df_respfeatures.query(f"cond == 'rsp_ctrl'")['etCO2'].values, alternative='two-sided')
+
+    # one mean etCO2 per subject and condition
+    df_sub = df_respfeatures.groupby(["sujet", "cond"], as_index=False)["etCO2"].mean()
+
+    conds = ["rsp_ctrl", "rsp_chl"]
+    labels = ["R", "Ch"]
+    x = np.arange(2)
+
+    fig, ax = plt.subplots(figsize=(4, 6))
+
+    # group means
+    means = df_sub.groupby("cond")["etCO2"].mean().reindex(conds)
+    ax.bar(x, means, width=0.8, alpha=0.5)
+
+    # paired individual subjects
+    df_wide = df_sub.pivot(index="sujet", columns="cond", values="etCO2")
+
+    for sujet, row in df_wide.iterrows():
+        if row[conds].notna().all():
+            ax.plot(x, row[conds].values, "-o", alpha=0.6, linewidth=1.5, markersize=6)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=20)
+    ax.set_ylabel(r"etCO$_2$ (%)", fontsize=22)
+    ax.tick_params(axis="y", labelsize=16)
+    ax.set_title("Hypercapnia", fontsize=26)
+    plt.tight_layout()
+
+    # plt.show()
+
+    os.chdir(os.path.join(path_results, 'respi', 'rf_analysis')) 
+    fig.savefig(f"etCO2.png")
+    fig.savefig(os.path.join(path_paper_figure_export, f"fig02e_etCO2.svg"))
+
+
+
+
+
+
+
 
 ################################
 ######## EXECUTE ########
@@ -306,6 +380,8 @@ if __name__ == '__main__':
         export_resp_mean(sujet)
 
     export_respi_allsujet()
+
+    export_CO2_res()
     
 
 

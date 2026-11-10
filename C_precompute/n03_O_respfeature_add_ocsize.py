@@ -368,6 +368,16 @@ def generate_df_R():
 
 
 
+################################
+######## ETCO2 ########
+################################
+
+def etCO2_analysis():
+
+    for sujet in sujet_list:
+    
+        _respfeatures = load_respfeatures(sujet)
+
 
 
 
@@ -385,7 +395,7 @@ if __name__ == '__main__':
 
     generate_df_R()
 
-    ####
+    #### interaction
     for sujet in sujet_list_interaction_analysis:
 
         extract_oc_size_MECACO2(sujet)

@@ -32,7 +32,7 @@ def precompute_tf_allconv_from_epoch(sujet, norm_param):
     print(f'TF PRECOMPUTE {sujet}', flush=True)
 
     #### get params
-    data, resp, chanlist, localist = get_data_sujet_fullsig(sujet)
+    data, resp, co2, chanlist, localist = get_data_sujet_fullsig(sujet)
 
     time_vec_sec = np.arange(resp[0].size)/srate - (resp[0].size/srate)/2
     chan_list, loca_list = get_chanlist(sujet)
